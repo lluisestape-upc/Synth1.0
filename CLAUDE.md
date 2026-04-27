@@ -33,15 +33,15 @@ The `Builds/VisualStudio2022/` and `JuceLibraryCode/` directories are **auto-gen
 
 All custom code lives in `Source/`:
 
-- **`WavetableOscillator.h`** — Header-only. Builds 4 band-limited wavetables (Sine, Saw, Square, Triangle) once via `std::call_once` into `inline static` arrays shared across all voice instances. `renderBlock()` uses SSE2 4-sample parallel linear interpolation on x64 (`JUCE_USE_SSE_INTRINSICS` guard). Phase is normalized to `[0, 1)` to simplify wrap logic.
+- **`WavetableOscillator.h`** — Header-only. Builds 4 band-limited wavetables (Sine, Saw, Square, Triangle) once via `std::call_once`. `renderBlock()` applies optional warp transform to the lookup phase before table read (`applyWarp()` — modes: None/Sync/Bend/PWM). Phase is normalized to `[0, 1)`.
 
-- **`SynthSound.h`** — Trivial `juce::SynthesiserSound` marker that applies to all notes/channels.
+- **`SynthSound.h`** — Trivial `juce::SynthesiserSound` marker.
 
-- **`SynthVoice.h`** — Header-only `juce::SynthesiserVoice`. Holds one `WavetableOscillator`, one `juce::ADSR`, and one `juce::dsp::StateVariableTPTFilter<float>` (lowpass). Receives `std::atomic<float>*` pointers from APVTS in its constructor — reads these once per block in `renderNextBlock` for lock-free UI→audio communication. Signal chain per sample: oscillator → tanh soft-clip drive → SVT filter → ADSR envelope × velocity. Must be explicitly `prepareToPlay`'d by the processor (juce::Synthesiser does not do this).
+- **`SynthVoice.h`** — Header-only `juce::SynthesiserVoice`. Holds `kMaxUnisonVoices=8` oscillators, one `juce::ADSR`, and one stereo `juce::dsp::StateVariableTPTFilter<float>`. Glide uses `SmoothedValue<float, Multiplicative>` (smoothedFreqHz) — only activates when ADSR is already active at note start. `setLegatoNote()` changes pitch without triggering ADSR. Signal chain: unison oscs (with warp) → constant-power panning → tanh drive → SVT filter → ADSR × velocity.
 
-- **`PluginProcessor.h/.cpp`** — `Synth1_0AudioProcessor`. Owns the `juce::Synthesiser` (16 voices) and the `juce::AudioProcessorValueTreeState` (`apvts`, public for editor attachment). `createParameterLayout()` is a static factory. `processBlock()` clears the buffer, calls `synth.renderNextBlock`, then applies master gain via a cached atomic pointer. State serialized via `apvts.copyState()` / `apvts.replaceState()`.
+- **`PluginProcessor.h/.cpp`** — Owns `juce::Synthesiser` (16 voices) and APVTS. `processBlock()` preprocesses MIDI for Mono/Legato voice modes (note stack in `monoNoteStack`, tracks `currentMonoNote`). Signal chain: LFO → Voices → Master Gain → Chorus → Delay → Saturation (2× OS) → 3-Band EQ → SpecVisBuf feed → Reverb.
 
-- **`PluginEditor.h/.cpp`** — Custom dark UI (720×360). `SynthLookAndFeel` overrides `drawRotarySlider` with arc-style knobs (track + value arc + pointer dot). `WaveformButton` is a custom `juce::Component` that draws waveform shapes (Sine/Saw/Square/Triangle) and syncs to the `waveform` APVTS choice parameter via `juce::ParameterAttachment`. Knob sliders use `SliderAttachment`. Section bounds (`oscBounds`, `adsrBounds`, etc.) are computed in `resized()` and consumed by `paint()` to keep backgrounds and controls aligned. The waveform buttons use `juce::OwnedArray<WaveformButton>` — **do not** use brace-init `for (auto* pair : {std::pair<>...})` patterns in MSVC builds as they fail to deduce types; use C-style pointer arrays instead.
+- **`PluginEditor.h/.cpp`** — 800×358, 4 tabs (MAIN/MOD/FX/EQ). `SynthLookAndFeel::drawRotarySlider` draws an amber LFO mod-depth ring outside the main arc when `slider.getComponentID() == "cutoff"` and `lfoCutoffDepth != nullptr`. `EQVisualizer` handles `mouseDown/Drag/Up/Wheel/Move/Exit` for interactive band editing — maps X↔log-freq, Y↔gain dB; calls `apvts.getParameter()->setValueNotifyingHost()`. `ComboBoxAttachment`s for choice params are created with `std::unique_ptr` *after* items are added to the combo (init-order fix). Preset system uses async `juce::FileChooser`; presets stored as XML in `userApplicationDataDirectory/Synth1_0/Presets/`.
 
 ## Parameters (APVTS IDs)
 
@@ -51,11 +51,31 @@ All custom code lives in `Source/`:
 | `decay` | 0.001–2.0 s | 0.1 | skew 0.4 |
 | `sustain` | 0–1 | 0.8 | linear |
 | `release` | 0.01–5.0 s | 0.2 | skew 0.4 |
-| `cutoff` | 20–20000 Hz | 8000 | skew 0.25 |
+| `cutoff` | 20–20000 Hz | 8000 | skew 0.25; componentID="cutoff" for mod ring |
 | `resonance` | 0.1–10 | 0.7 | maps to SVT Q |
 | `drive` | 1–10 | 1.0 | pre-filter tanh gain |
-| `waveform` | 0–3 (choice) | 0 | Sine/Saw/Square/Triangle |
+| `wtPosition` | 0–3 | 0 | fractional morphs between wavetables |
 | `gain` | 0–1 | 0.7 | master output |
+| `lfoRate` | 0.1–20 Hz | 1.0 | skew 0.4 |
+| `lfoCutoffDepth` | 0–1 | 0 | × 4000 Hz mod depth |
+| `lfoPitchDepth` | 0–48 st | 0 | semitones |
+| `unisonVoices` | 1–8 | 1 | integer step |
+| `unisonDetune` | 0–1 | 0 | total semitone spread |
+| `unisonSpread` | 0–1 | 0 | stereo spread |
+| `warpMode` | choice 0–3 | 0 | None/Sync/Bend/PWM |
+| `warpAmount` | 0–1 | 0 | warp intensity |
+| `voiceMode` | choice 0–2 | 0 | Poly/Mono/Legato |
+| `glideTime` | 0–2 s | 0 | skew 0.4 |
+| `chorusMix/Rate/Depth` | — | 0/1/0.25 | |
+| `delayTime` | 10–1000 ms | 250 | skew 0.4; tempo-syncs to quarter-note |
+| `delayFeedback` | 0–0.95 | 0.3 | |
+| `delayMix` | 0–1 | 0 | |
+| `satDrive` | 1–20 | 1 | 2× oversampled tanh |
+| `satMix` | 0–1 | 0 | |
+| `eqLowFreq/Gain` | 20–2000 Hz / ±18 dB | 200/0 | low shelf |
+| `eqMidFreq/Gain/Q` | 200–8000 Hz / ±18 dB / 0.1–10 | 1000/0/1 | peak bell |
+| `eqHighFreq/Gain` | 1000–20000 Hz / ±18 dB | 5000/0 | high shelf |
+| `reverbSize/Damping/Mix` | 0–1 | 0.5/0.5/0 | |
 
 ## Projucer requirements
 
@@ -66,5 +86,7 @@ Enable **"Plugin wants MIDI input"** in `Synth1.jucer` (Projucer → Plugin Char
 - `juce::ScopedNoDenormals` at the top of `processBlock()`.
 - All parameters go through APVTS; editor attaches via `SliderAttachment`/`ButtonAttachment` — never call audio-thread parameter setters from the UI thread.
 - `SynthVoice::prepareToPlay` must be called explicitly from `PluginProcessor::prepareToPlay` because `juce::Synthesiser` only calls `setCurrentPlaybackSampleRate` on voices.
+- `ComboBoxAttachment` (for choice params) must be created *after* items are added to the combo box. Use `std::unique_ptr<ComboBoxAttachment>` and construct it in the component's constructor body, not the member-initializer list.
+- For interactive APVTS param changes from the UI thread (e.g. EQ dragging), use `apvts.getParameter(id)->setValueNotifyingHost(range.convertTo0to1(value))`.
 - The wavetable has 64 harmonics — appropriate for bass/mid-range. Add mip-mapped tables per octave for alias-free playback across the full MIDI range.
 - C++17 is required (inline static variables, structured bindings, etc.).

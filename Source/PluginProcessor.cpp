@@ -2,6 +2,7 @@
 #include "PluginEditor.h"
 #include "SynthSound.h"
 #include "SynthVoice.h"
+#include <algorithm>
 
 //==============================================================================
 juce::AudioProcessorValueTreeState::ParameterLayout
@@ -87,6 +88,67 @@ Synth1_0AudioProcessor::createParameterLayout()
         ParameterID{"satMix",   1}, "Sat Mix",
         NormalisableRange<float>{0.0f, 1.0f, 0.001f}, 0.0f));
 
+    // ── Unison ────────────────────────────────────────────────────────────────
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"unisonVoices", 1}, "Unison Voices",
+        NormalisableRange<float>{1.0f, 8.0f, 1.0f}, 1.0f));
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"unisonDetune", 1}, "Unison Detune",
+        NormalisableRange<float>{0.0f, 1.0f, 0.001f}, 0.0f));
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"unisonSpread", 1}, "Unison Spread",
+        NormalisableRange<float>{0.0f, 1.0f, 0.001f}, 0.0f));
+
+    // ── EQ ────────────────────────────────────────────────────────────────────
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"eqLowFreq",  1}, "EQ Low Freq",
+        NormalisableRange<float>{20.0f, 2000.0f, 1.0f, 0.35f}, 200.0f));
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"eqLowGain",  1}, "EQ Low Gain",
+        NormalisableRange<float>{-18.0f, 18.0f, 0.1f}, 0.0f));
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"eqMidFreq",  1}, "EQ Mid Freq",
+        NormalisableRange<float>{200.0f, 8000.0f, 1.0f, 0.35f}, 1000.0f));
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"eqMidGain",  1}, "EQ Mid Gain",
+        NormalisableRange<float>{-18.0f, 18.0f, 0.1f}, 0.0f));
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"eqMidQ",     1}, "EQ Mid Q",
+        NormalisableRange<float>{0.1f, 10.0f, 0.01f, 0.4f}, 1.0f));
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"eqHighFreq", 1}, "EQ High Freq",
+        NormalisableRange<float>{1000.0f, 20000.0f, 1.0f, 0.35f}, 5000.0f));
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"eqHighGain", 1}, "EQ High Gain",
+        NormalisableRange<float>{-18.0f, 18.0f, 0.1f}, 0.0f));
+
+    // ── Reverb ────────────────────────────────────────────────────────────────
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"reverbSize",    1}, "Reverb Size",
+        NormalisableRange<float>{0.0f, 1.0f, 0.001f}, 0.5f));
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"reverbDamping", 1}, "Reverb Damping",
+        NormalisableRange<float>{0.0f, 1.0f, 0.001f}, 0.5f));
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"reverbMix",     1}, "Reverb Mix",
+        NormalisableRange<float>{0.0f, 1.0f, 0.001f}, 0.0f));
+
+    // ── Voice mode & glide ────────────────────────────────────────────────────
+    layout.add (std::make_unique<AudioParameterChoice>(
+        ParameterID{"voiceMode", 1}, "Voice Mode",
+        juce::StringArray { "Poly", "Mono", "Legato" }, 0));
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"glideTime", 1}, "Glide Time",
+        NormalisableRange<float>{0.0f, 2.0f, 0.001f, 0.4f}, 0.0f));
+
+    // ── Oscillator warp ───────────────────────────────────────────────────────
+    layout.add (std::make_unique<AudioParameterChoice>(
+        ParameterID{"warpMode", 1}, "Warp Mode",
+        juce::StringArray { "None", "Sync", "Bend", "PWM" }, 0));
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"warpAmount", 1}, "Warp Amount",
+        NormalisableRange<float>{0.0f, 1.0f, 0.001f}, 0.0f));
+
     return layout;
 }
 
@@ -115,6 +177,20 @@ Synth1_0AudioProcessor::Synth1_0AudioProcessor()
     delayMixParam       = apvts.getRawParameterValue ("delayMix");
     satDriveParam       = apvts.getRawParameterValue ("satDrive");
     satMixParam         = apvts.getRawParameterValue ("satMix");
+    eqLowFreqParam      = apvts.getRawParameterValue ("eqLowFreq");
+    eqLowGainParam      = apvts.getRawParameterValue ("eqLowGain");
+    eqMidFreqParam      = apvts.getRawParameterValue ("eqMidFreq");
+    eqMidGainParam      = apvts.getRawParameterValue ("eqMidGain");
+    eqMidQParam         = apvts.getRawParameterValue ("eqMidQ");
+    eqHighFreqParam     = apvts.getRawParameterValue ("eqHighFreq");
+    eqHighGainParam     = apvts.getRawParameterValue ("eqHighGain");
+    reverbSizeParam     = apvts.getRawParameterValue ("reverbSize");
+    reverbDampingParam  = apvts.getRawParameterValue ("reverbDamping");
+    reverbMixParam      = apvts.getRawParameterValue ("reverbMix");
+    voiceModeParam      = apvts.getRawParameterValue ("voiceMode");
+    glideTimeParam      = apvts.getRawParameterValue ("glideTime");
+    warpModeParam       = apvts.getRawParameterValue ("warpMode");
+    warpAmountParam     = apvts.getRawParameterValue ("warpAmount");
 
     for (int i = 0; i < 16; ++i)
         synth.addVoice (new SynthVoice (apvts));
@@ -155,6 +231,25 @@ void Synth1_0AudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     // Pre-allocate dry buffer (for saturation wet/dry)
     dryBuffer.setSize (2, samplesPerBlock, false, true, true);
 
+    // EQ — one mono IIR filter per channel per band; coefficients set before first processBlock
+    {
+        juce::dsp::ProcessSpec monoSpec { sampleRate, static_cast<uint32_t>(samplesPerBlock), 1 };
+        eqLowL.prepare  (monoSpec); eqLowR.prepare  (monoSpec);
+        eqMidL.prepare  (monoSpec); eqMidR.prepare  (monoSpec);
+        eqHighL.prepare (monoSpec); eqHighR.prepare (monoSpec);
+
+        using Coeffs = juce::dsp::IIR::Coefficients<float>;
+        auto lo  = Coeffs::makeLowShelf  (sampleRate, 200.0f,  0.707f, 1.0f);
+        auto mid = Coeffs::makePeakFilter (sampleRate, 1000.0f, 1.0f,   1.0f);
+        auto hi  = Coeffs::makeHighShelf  (sampleRate, 5000.0f, 0.707f, 1.0f);
+        eqLowL.coefficients  = eqLowR.coefficients  = lo;
+        eqMidL.coefficients  = eqMidR.coefficients  = mid;
+        eqHighL.coefficients = eqHighR.coefficients = hi;
+    }
+
+    // Reverb
+    reverb.prepare ({ sampleRate, static_cast<uint32_t>(samplesPerBlock), 2 });
+
     lfoPhase = 0.0f;
 }
 
@@ -164,6 +259,10 @@ void Synth1_0AudioProcessor::releaseResources()
     delayLineL.reset();
     delayLineR.reset();
     oversampler.reset();
+    eqLowL.reset();  eqLowR.reset();
+    eqMidL.reset();  eqMidR.reset();
+    eqHighL.reset(); eqHighR.reset();
+    reverb.reset();
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -206,8 +305,93 @@ void Synth1_0AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         if (auto* v = dynamic_cast<SynthVoice*> (synth.getVoice (i)))
             v->setLFOMod (cutoffMod, pitchMod);
 
-    // ── Synth ─────────────────────────────────────────────────────────────────
-    synth.renderNextBlock (buffer, midiMessages, 0, N);
+    // ── Synth (with Mono/Legato MIDI preprocessing) ───────────────────────────
+    {
+        const int voiceMode = static_cast<int> (voiceModeParam->load() + 0.5f);
+        if (voiceMode > 0)
+        {
+            juce::MidiBuffer processedMidi;
+            for (const auto& meta : midiMessages)
+            {
+                auto  msg       = meta.getMessage();
+                bool  passThru  = true;
+
+                if (msg.isNoteOn())
+                {
+                    const int note = msg.getNoteNumber();
+                    monoNoteStack.erase (std::remove (monoNoteStack.begin(), monoNoteStack.end(), note),
+                                         monoNoteStack.end());
+                    monoNoteStack.push_back (note);
+
+                    if (voiceMode == 2 && currentMonoNote >= 0)  // Legato: slide pitch, no retrigger
+                    {
+                        for (int i = 0; i < synth.getNumVoices(); ++i)
+                            if (auto* v = dynamic_cast<SynthVoice*> (synth.getVoice (i)))
+                                if (v->isVoiceActive())
+                                    v->setLegatoNote (note);
+                        currentMonoNote = note;
+                        passThru = false;
+                    }
+                    else
+                    {
+                        if (currentMonoNote >= 0)  // Mono: steal previous note
+                            processedMidi.addEvent (
+                                juce::MidiMessage::noteOff (msg.getChannel(), currentMonoNote),
+                                meta.samplePosition);
+                        currentMonoNote = note;
+                    }
+                }
+                else if (msg.isNoteOff())
+                {
+                    const int note = msg.getNoteNumber();
+                    monoNoteStack.erase (std::remove (monoNoteStack.begin(), monoNoteStack.end(), note),
+                                         monoNoteStack.end());
+                    if (note == currentMonoNote)
+                    {
+                        if (!monoNoteStack.empty())
+                        {
+                            const int prev = monoNoteStack.back();
+                            if (voiceMode == 2)  // Legato resume: slide back
+                            {
+                                for (int i = 0; i < synth.getNumVoices(); ++i)
+                                    if (auto* v = dynamic_cast<SynthVoice*> (synth.getVoice (i)))
+                                        if (v->isVoiceActive())
+                                            v->setLegatoNote (prev);
+                                currentMonoNote = prev;
+                                passThru = false;
+                            }
+                            else  // Mono resume: retrigger
+                            {
+                                processedMidi.addEvent (
+                                    juce::MidiMessage::noteOn (msg.getChannel(), prev, (uint8_t) 64),
+                                    meta.samplePosition);
+                                currentMonoNote = prev;
+                                passThru = false;
+                            }
+                        }
+                        else
+                        {
+                            currentMonoNote = -1;
+                        }
+                    }
+                    else
+                    {
+                        passThru = false;  // Released non-current note — just discard
+                    }
+                }
+
+                if (passThru)
+                    processedMidi.addEvent (msg, meta.samplePosition);
+            }
+            synth.renderNextBlock (buffer, processedMidi, 0, N);
+        }
+        else
+        {
+            monoNoteStack.clear();
+            currentMonoNote = -1;
+            synth.renderNextBlock (buffer, midiMessages, 0, N);
+        }
+    }
     buffer.applyGain (masterGainParam->load());
 
     // ── Chorus ────────────────────────────────────────────────────────────────
@@ -259,6 +443,61 @@ void Synth1_0AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             buffer.applyGain (satMix);
             for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
                 buffer.addFrom (ch, 0, dryBuffer, ch, 0, N, 1.0f - satMix);
+        }
+    }
+
+    // ── 3-Band EQ ─────────────────────────────────────────────────────────────
+    {
+        using Coeffs = juce::dsp::IIR::Coefficients<float>;
+        const double sr = currentSR;
+
+        // Update coefficients once per block (same set shared by L and R)
+        auto lo  = Coeffs::makeLowShelf  (sr, eqLowFreqParam->load(), 0.707f,
+                       juce::Decibels::decibelsToGain (eqLowGainParam->load()));
+        auto mid = Coeffs::makePeakFilter (sr, eqMidFreqParam->load(),
+                       juce::jlimit (0.1f, 10.0f, eqMidQParam->load()),
+                       juce::Decibels::decibelsToGain (eqMidGainParam->load()));
+        auto hi  = Coeffs::makeHighShelf  (sr, eqHighFreqParam->load(), 0.707f,
+                       juce::Decibels::decibelsToGain (eqHighGainParam->load()));
+        eqLowL.coefficients  = eqLowR.coefficients  = lo;
+        eqMidL.coefficients  = eqMidR.coefficients  = mid;
+        eqHighL.coefficients = eqHighR.coefficients = hi;
+
+        // Per-sample processing — each channel through all 3 bands
+        float* L = buffer.getWritePointer (0);
+        float* R = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : nullptr;
+        for (int i = 0; i < N; ++i)
+        {
+            L[i] = eqHighL.processSample (eqMidL.processSample (eqLowL.processSample (L[i])));
+            if (R)
+                R[i] = eqHighR.processSample (eqMidR.processSample (eqLowR.processSample (R[i])));
+        }
+    }
+
+    // ── Feed spectrum visualiser (left channel after all processing) ──────────
+    {
+        const float* L = buffer.getReadPointer (0);
+        for (int i = 0; i < N; ++i)
+            specVisBuf.write (L[i]);
+    }
+
+    // ── Reverb ────────────────────────────────────────────────────────────────
+    {
+        const float mix = reverbMixParam->load();
+        if (mix > 0.001f)
+        {
+            juce::dsp::Reverb::Parameters rp;
+            rp.roomSize   = reverbSizeParam->load();
+            rp.damping    = reverbDampingParam->load();
+            rp.wetLevel   = mix;
+            rp.dryLevel   = 1.0f - mix;
+            rp.width      = 1.0f;
+            rp.freezeMode = 0.0f;
+            reverb.setParameters (rp);
+
+            juce::dsp::AudioBlock<float>            block (buffer);
+            juce::dsp::ProcessContextReplacing<float> ctx (block);
+            reverb.process (ctx);
         }
     }
 }

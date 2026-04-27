@@ -25,6 +25,20 @@ struct LfoVisBuf
     }
 };
 
+// Larger ring buffer for spectrum analysis (holds 4096 samples — fits a 2048-point FFT).
+struct SpecVisBuf
+{
+    static constexpr int kSize = 4096;
+    float            data[kSize] {};
+    std::atomic<int> writePos { 0 };
+
+    void write (float v) noexcept
+    {
+        data[writePos.load (std::memory_order_relaxed) % kSize] = v;
+        writePos.fetch_add (1, std::memory_order_relaxed);
+    }
+};
+
 class Synth1_0AudioProcessor : public juce::AudioProcessor
 {
 public:
@@ -65,6 +79,9 @@ public:
     // LFO vis buffer — UI reads snapshots from here
     LfoVisBuf lfoVisBuf;
 
+    // Spectrum vis buffer — larger ring to hold a full FFT window of audio data
+    SpecVisBuf specVisBuf;
+
 private:
     // ── Synth ─────────────────────────────────────────────────────────────────
     juce::Synthesiser synth;
@@ -82,6 +99,30 @@ private:
     std::atomic<float>* delayMixParam      = nullptr;
     std::atomic<float>* satDriveParam      = nullptr;
     std::atomic<float>* satMixParam        = nullptr;
+
+    // EQ
+    std::atomic<float>* eqLowFreqParam    = nullptr;
+    std::atomic<float>* eqLowGainParam    = nullptr;
+    std::atomic<float>* eqMidFreqParam    = nullptr;
+    std::atomic<float>* eqMidGainParam    = nullptr;
+    std::atomic<float>* eqMidQParam       = nullptr;
+    std::atomic<float>* eqHighFreqParam   = nullptr;
+    std::atomic<float>* eqHighGainParam   = nullptr;
+
+    // Reverb
+    std::atomic<float>* reverbSizeParam    = nullptr;
+    std::atomic<float>* reverbDampingParam = nullptr;
+    std::atomic<float>* reverbMixParam     = nullptr;
+
+    // Voice mode / glide / warp
+    std::atomic<float>* voiceModeParam  = nullptr;
+    std::atomic<float>* glideTimeParam  = nullptr;
+    std::atomic<float>* warpModeParam   = nullptr;
+    std::atomic<float>* warpAmountParam = nullptr;
+
+    // ── Mono/Legato state ─────────────────────────────────────────────────────
+    std::vector<int> monoNoteStack;
+    int              currentMonoNote = -1;
 
     // ── LFO engine ────────────────────────────────────────────────────────────
     float  lfoPhase       = 0.0f;
@@ -101,6 +142,14 @@ private:
 
     // Pre-allocated dry buffer for wet/dry blend
     juce::AudioBuffer<float> dryBuffer;
+
+    // Post-processing EQ — one filter per channel per band (3 bands × 2 channels)
+    juce::dsp::IIR::Filter<float> eqLowL,  eqLowR;
+    juce::dsp::IIR::Filter<float> eqMidL,  eqMidR;
+    juce::dsp::IIR::Filter<float> eqHighL, eqHighR;
+
+    // Reverb
+    juce::dsp::Reverb reverb;
 
     void processDelay (juce::AudioBuffer<float>&, int numSamples);
 

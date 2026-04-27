@@ -2,9 +2,6 @@
 #include <JuceHeader.h>
 #include <mutex>
 
-// Wavetable oscillator with linear cross-table morphing.
-// wavePosition 0=Sine 1=Saw 2=Square 3=Triangle; fractional values interpolate.
-// Tables are built once (std::call_once) and shared across all instances.
 class WavetableOscillator
 {
 public:
@@ -28,8 +25,6 @@ public:
         phaseDelta = static_cast<float> (freqHz / sampleRate);
     }
 
-    // pos in [0, 3]: 0=Sine, 1=Saw, 2=Square, 3=Triangle; fractional morphs between adjacent tables.
-    // UI access — safe to call from the message thread (tables are const after init)
     static const float* getTable (int idx) noexcept { return sTables[idx]; }
     static int          getTableSize() noexcept     { return kTableSize; }
 
@@ -37,6 +32,10 @@ public:
     {
         wavePosition = juce::jlimit (0.0f, static_cast<float> (kNumWaveforms - 1), pos);
     }
+
+    // warpMode: 0=None, 1=Sync, 2=Bend, 3=PWM
+    void setWarpMode   (int m)   noexcept { warpMode   = m; }
+    void setWarpAmount (float a) noexcept { warpAmount = juce::jlimit (0.0f, 1.0f, a); }
 
     void renderBlock (float* output, int numSamples) noexcept
     {
@@ -49,7 +48,8 @@ public:
 
         for (int i = 0; i < numSamples; ++i)
         {
-            const float pos  = currentPhase * tSz;
+            const float wp   = applyWarp (currentPhase);
+            const float pos  = wp * tSz;
             const int   idx  = static_cast<int> (pos);
             const float frac = pos - static_cast<float> (idx);
 
@@ -63,6 +63,32 @@ public:
     }
 
 private:
+    float applyWarp (float phase) const noexcept
+    {
+        switch (warpMode)
+        {
+            case 1: // Sync — multiply phase by ratio, fold back to [0,1)
+            {
+                const float ratio = 1.0f + warpAmount * 7.0f;
+                const float p     = phase * ratio;
+                return p - std::floor (p);
+            }
+            case 2: // Bend — non-linear phase redistribution
+            {
+                const float k = 0.05f + warpAmount * 0.9f;
+                return (phase < k) ? phase / (2.0f * k)
+                                   : 0.5f + (phase - k) / (2.0f * (1.0f - k));
+            }
+            case 3: // PWM
+            {
+                const float pw = 0.05f + warpAmount * 0.9f;
+                return (phase < pw) ? phase / (2.0f * pw)
+                                    : 0.5f + (phase - pw) / (2.0f * (1.0f - pw));
+            }
+            default: return phase;
+        }
+    }
+
     alignas(32) inline static float sTables[kNumWaveforms][kTableSize + 1] {};
     inline static std::once_flag sInitFlag;
 
@@ -112,4 +138,6 @@ private:
     float currentPhase = 0.0f;
     float phaseDelta   = 0.0f;
     double sampleRate  = 44100.0;
+    int   warpMode     = 0;
+    float warpAmount   = 0.0f;
 };

@@ -13,6 +13,7 @@ namespace SynthColors
     const juce::Colour text    { 0xffe0e0f0 };
     const juce::Colour subtext { 0xff6868a0 };
     const juce::Colour track   { 0xff2a2a42 };
+    const juce::Colour modRing { 0xfffab387 };  // amber — LFO mod ring
 }
 
 //==============================================================================
@@ -26,10 +27,12 @@ public:
     void drawLinearSlider  (juce::Graphics&, int x, int y, int w, int h,
                             float sliderPos, float minSliderPos, float maxSliderPos,
                             juce::Slider::SliderStyle, juce::Slider&) override;
+
+    // Set by editor to enable the LFO modulation ring on the cutoff knob
+    std::atomic<float>* lfoCutoffDepth = nullptr;
 };
 
 //==============================================================================
-// Draws a live ADSR envelope shape; repaints via 30 Hz timer.
 class ADSRVisualizer : public juce::Component, public juce::Timer
 {
 public:
@@ -43,7 +46,6 @@ private:
 };
 
 //==============================================================================
-// Draws the current morphed wavetable shape.
 class WTVisualizer : public juce::Component, public juce::Timer
 {
 public:
@@ -57,7 +59,6 @@ private:
 };
 
 //==============================================================================
-// Reads the LFO circular buffer from the processor and shows a scrolling scope.
 class LFOVisualizer : public juce::Component, public juce::Timer
 {
 public:
@@ -72,7 +73,6 @@ private:
 };
 
 //==============================================================================
-// Helper: sets up a rotary knob + label beneath it.
 inline void setupKnob (juce::Slider& s, juce::Label& l,
                         const juce::String& name,
                         juce::Component* parent)
@@ -122,7 +122,15 @@ private:
     juce::Label  gainLabel;
     juce::AudioProcessorValueTreeState::SliderAttachment gainAttach;
 
-    // Section rectangles — set in resized(), used in paint()
+    // Warp
+    juce::ComboBox warpModeCombo;
+    juce::Label    warpModeLabel;
+    juce::Slider   warpAmountSlider;
+    juce::Label    warpAmountLabel;
+    // combo attachment created after items added (init order fix)
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> warpModeAttach;
+    juce::AudioProcessorValueTreeState::SliderAttachment                    warpAmountAttach;
+
     juce::Rectangle<int> oscR, adsrR, filterR, outR;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainTab)
@@ -145,7 +153,21 @@ private:
     juce::AudioProcessorValueTreeState::SliderAttachment
         lfoRateAttach, lfoCutoffDepthAttach, lfoPitchDepthAttach;
 
-    juce::Rectangle<int> visR, ctrlR;
+    // Unison
+    juce::Slider unisonVoicesSlider, unisonDetuneSlider, unisonSpreadSlider;
+    juce::Label  unisonVoicesLabel,  unisonDetuneLabel,  unisonSpreadLabel;
+    juce::AudioProcessorValueTreeState::SliderAttachment
+        unisonVoicesAttach, unisonDetuneAttach, unisonSpreadAttach;
+
+    // Voice mode & glide
+    juce::ComboBox voiceModeCombo;
+    juce::Label    voiceModeLabel;
+    juce::Slider   glideTimeSlider;
+    juce::Label    glideTimeLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> voiceModeAttach;
+    juce::AudioProcessorValueTreeState::SliderAttachment                    glideTimeAttach;
+
+    juce::Rectangle<int> visR, lfoR, unisonR, voiceR;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ModTab)
 };
 
@@ -178,8 +200,91 @@ private:
     juce::AudioProcessorValueTreeState::SliderAttachment
         satDriveAttach, satMixAttach;
 
-    juce::Rectangle<int> chorusR, delayR, satR;
+    // Reverb
+    juce::Slider reverbSizeSlider, reverbDampingSlider, reverbMixSlider;
+    juce::Label  reverbSizeLabel,  reverbDampingLabel,  reverbMixLabel;
+    juce::AudioProcessorValueTreeState::SliderAttachment
+        reverbSizeAttach, reverbDampingAttach, reverbMixAttach;
+
+    juce::Rectangle<int> chorusR, delayR, satR, reverbR;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FXTab)
+};
+
+//==============================================================================
+class EQVisualizer : public juce::Component, public juce::Timer
+{
+public:
+    static constexpr int kFFTOrder = 11;
+    static constexpr int kFFTSize  = 1 << kFFTOrder;   // 2048
+
+    explicit EQVisualizer (Synth1_0AudioProcessor& p);
+    ~EQVisualizer() override { stopTimer(); }
+    void timerCallback() override;
+    void paint (juce::Graphics&) override;
+
+    // Mouse interaction for band editing
+    void mouseDown      (const juce::MouseEvent&) override;
+    void mouseDrag      (const juce::MouseEvent&) override;
+    void mouseUp        (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    void mouseMove      (const juce::MouseEvent&) override;
+    void mouseExit      (const juce::MouseEvent&) override;
+
+private:
+    // Returns 0=low, 1=mid, 2=high, -1=none — based on proximity in pixel space
+    int   findNearestBand (float xPx, float yPx) const;
+    float freqToX         (float freq) const;
+    float gainToY         (float gainDb) const;
+    float xToFreq         (float xPx) const;
+    float yToGain         (float yPx) const;
+
+    Synth1_0AudioProcessor& proc;
+
+    juce::dsp::FFT                       fft  { kFFTOrder };
+    juce::dsp::WindowingFunction<float>  win  { (size_t) kFFTSize,
+                                                juce::dsp::WindowingFunction<float>::hann };
+    std::array<float, kFFTSize * 2>      fftBuf  {};
+    std::array<float, kFFTSize / 2 + 1>  spectrum {};
+
+    int draggedBand = -1;
+    int hoveredBand = -1;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EQVisualizer)
+};
+
+//==============================================================================
+class EQTab : public juce::Component
+{
+public:
+    explicit EQTab (Synth1_0AudioProcessor& p);
+    void paint   (juce::Graphics&) override;
+    void resized () override;
+
+private:
+    Synth1_0AudioProcessor& proc;
+
+    EQVisualizer eqVis;
+
+    // Low shelf
+    juce::Slider eqLowFreqSlider,  eqLowGainSlider;
+    juce::Label  eqLowFreqLabel,   eqLowGainLabel;
+    juce::AudioProcessorValueTreeState::SliderAttachment
+        eqLowFreqAttach, eqLowGainAttach;
+
+    // Mid bell (peak)
+    juce::Slider eqMidFreqSlider,  eqMidGainSlider,  eqMidQSlider;
+    juce::Label  eqMidFreqLabel,   eqMidGainLabel,   eqMidQLabel;
+    juce::AudioProcessorValueTreeState::SliderAttachment
+        eqMidFreqAttach, eqMidGainAttach, eqMidQAttach;
+
+    // High shelf
+    juce::Slider eqHighFreqSlider, eqHighGainSlider;
+    juce::Label  eqHighFreqLabel,  eqHighGainLabel;
+    juce::AudioProcessorValueTreeState::SliderAttachment
+        eqHighFreqAttach, eqHighGainAttach;
+
+    juce::Rectangle<int> visR, lowR, midR, highR;
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EQTab)
 };
 
 //==============================================================================
@@ -196,6 +301,17 @@ private:
     SynthLookAndFeel laf;
 
     juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
+
+    // Preset bar
+    juce::ComboBox   presetBox;
+    juce::TextButton saveBtn { "SAVE" };
+
+    juce::File getPresetsDir() const;
+    void       populatePresets();
+    void       savePreset();
+    void       loadPreset (const juce::File& f);
+
+    std::unique_ptr<juce::FileChooser> fileChooser;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Synth1_0AudioProcessorEditor)
 };
