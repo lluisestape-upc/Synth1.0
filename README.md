@@ -5,6 +5,8 @@ Designed with a Serum-inspired architecture: wavetable morphing, LFO modulation 
 
 ---
 
+<img width="1089" height="584" alt="image" src="https://github.com/user-attachments/assets/e0978c00-7013-40fa-a7b0-d3708636fec2" />
+
 ## Features
 
 ### Oscillator
@@ -25,12 +27,16 @@ Designed with a Serum-inspired architecture: wavetable morphing, LFO modulation 
 - `juce::SmoothedValue` on both mod targets — click-free transitions
 - Real-time LFO scope reading from a lock-free circular buffer
 
+<img width="1092" height="586" alt="image" src="https://github.com/user-attachments/assets/ac1eac33-7274-4cb9-bc26-a57d5e18db62" />
+
 ### FX Rack (FX tab)
 | Effect | Controls | Notes |
 |---|---|---|
 | **Chorus** | Mix · Rate · Depth | `juce::dsp::Chorus` |
 | **Delay** | Time · Feedback · Mix | Stereo `DelayLine`; snaps to quarter-note when a DAW tempo is available |
 | **Saturation** | Drive · Mix | `tanh(x)` wave shaper with **2× oversampling** (`juce::dsp::Oversampling`) to eliminate aliasing |
+
+<img width="1087" height="576" alt="image" src="https://github.com/user-attachments/assets/e2a8630f-4dba-451e-ad19-1f72b36af2f4" />
 
 ### UI
 - Tabbed layout: **MAIN · MOD · FX**
