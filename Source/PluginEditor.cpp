@@ -201,6 +201,9 @@ void WTVisualizer::paint (juce::Graphics& g)
     const float cy = H * 0.5f;
     const float amp = H * 0.42f;
 
+    g.setColour (border.withAlpha (0.3f));
+    g.drawHorizontalLine ((int) cy, 4.0f, W - 4.0f);
+
     juce::Path wave;
     constexpr int kPts = 256;
     for (int i = 0; i <= kPts; ++i)
@@ -222,6 +225,18 @@ void WTVisualizer::paint (juce::Graphics& g)
     juce::DropShadow ({ accent.withAlpha (0.3f), 5, { 0, 0 } }).drawForPath (g, wave);
     g.setColour (accent);
     g.strokePath (wave, juce::PathStrokeType (1.5f));
+
+    // Waveform name overlay
+    {
+        const char* waveNames[] = { "SINE", "SAW", "SQR", "TRI" };
+        juce::String lbl = (blend < 0.05f) ? waveNames[tIdxA] :
+                           (blend > 0.95f) ? waveNames[tIdxB] :
+                           juce::String (waveNames[tIdxA]) + " > " + waveNames[tIdxB];
+        g.setColour (subtext.withAlpha (0.65f));
+        g.setFont (juce::FontOptions (7.5f));
+        g.drawText (lbl, 4, 3, (int) W - 8, 12, juce::Justification::centredLeft);
+    }
+
     g.setColour (border.withAlpha (0.4f));
     g.drawRoundedRectangle (getLocalBounds().toFloat(), 4.0f, 0.7f);
 }
@@ -248,6 +263,9 @@ void LFOVisualizer::paint (juce::Graphics& g)
     const float H  = static_cast<float> (getHeight());
     const float cy = H * 0.5f;
     const float amp = H * 0.42f;
+
+    g.setColour (border.withAlpha (0.3f));
+    g.drawHorizontalLine ((int) cy, 4.0f, W - 4.0f);
 
     juce::Path wave;
     const int kPts = LfoVisBuf::kSize;
@@ -332,11 +350,13 @@ void MainTab::paint (juce::Graphics& g)
         g.fillRoundedRectangle (r.toFloat(), 6.0f);
         g.setColour (border.withAlpha (0.5f));
         g.drawRoundedRectangle (r.toFloat(), 6.0f, 0.7f);
-        g.setColour (subtext.withAlpha (0.7f));
+        g.setColour (accent.withAlpha (0.55f));
+        g.fillRoundedRectangle ((float)(r.getX() + 5), (float)(r.getY() + 5), 2.0f, 9.0f, 1.0f);
+        g.setColour (text.withAlpha (0.65f));
         g.setFont (juce::FontOptions (7.5f));
-        g.drawText (title, r.getX() + 7, r.getY() + 4, r.getWidth() - 14, 12,
+        g.drawText (title, r.getX() + 10, r.getY() + 4, r.getWidth() - 17, 12,
                     juce::Justification::centredLeft);
-        g.setColour (border.withAlpha (0.25f));
+        g.setColour (accent.withAlpha (0.12f));
         g.fillRect (r.getX() + 5, r.getY() + 16, r.getWidth() - 10, 1);
     };
     drawPanel (oscR,    "OSC");
@@ -452,9 +472,9 @@ ModTab::ModTab (Synth1_0AudioProcessor& p)
       unisonSpreadAttach   (p.apvts, "unisonSpread",   unisonSpreadSlider),
       glideTimeAttach      (p.apvts, "glideTime",      glideTimeSlider)
 {
-    setupKnob (lfoRateSlider,        lfoRateLabel,        "RATE",     this);
-    setupKnob (lfoCutoffDepthSlider, lfoCutoffDepthLabel, "→ CUTOFF", this);
-    setupKnob (lfoPitchDepthSlider,  lfoPitchDepthLabel,  "→ PITCH",  this);
+    setupKnob (lfoRateSlider,        lfoRateLabel,        "RATE",      this);
+    setupKnob (lfoCutoffDepthSlider, lfoCutoffDepthLabel, "CUT DEPTH", this);
+    setupKnob (lfoPitchDepthSlider,  lfoPitchDepthLabel,  "PIT DEPTH", this);
     addAndMakeVisible (lfoVis);
 
     setupKnob (unisonVoicesSlider, unisonVoicesLabel, "VOICES", this);
@@ -483,10 +503,14 @@ void ModTab::paint (juce::Graphics& g)
         g.fillRoundedRectangle (r.toFloat(), 6.0f);
         g.setColour (border.withAlpha (0.5f));
         g.drawRoundedRectangle (r.toFloat(), 6.0f, 0.7f);
-        g.setColour (subtext.withAlpha (0.7f));
+        g.setColour (accent.withAlpha (0.55f));
+        g.fillRoundedRectangle ((float)(r.getX() + 5), (float)(r.getY() + 5), 2.0f, 9.0f, 1.0f);
+        g.setColour (text.withAlpha (0.65f));
         g.setFont (juce::FontOptions (7.5f));
-        g.drawText (title, r.getX() + 7, r.getY() + 4, r.getWidth() - 14, 12,
+        g.drawText (title, r.getX() + 10, r.getY() + 4, r.getWidth() - 17, 12,
                     juce::Justification::centredLeft);
+        g.setColour (accent.withAlpha (0.12f));
+        g.fillRect (r.getX() + 5, r.getY() + 16, r.getWidth() - 10, 1);
     };
     drawPanel (visR,    "LFO SCOPE");
     drawPanel (lfoR,    "LFO");
@@ -594,16 +618,18 @@ void FXTab::paint (juce::Graphics& g)
         g.fillRoundedRectangle (r.toFloat(), 6.0f);
         g.setColour (border.withAlpha (0.5f));
         g.drawRoundedRectangle (r.toFloat(), 6.0f, 0.7f);
-        g.setColour (subtext.withAlpha (0.7f));
+        g.setColour (accent.withAlpha (0.55f));
+        g.fillRoundedRectangle ((float)(r.getX() + 5), (float)(r.getY() + 5), 2.0f, 9.0f, 1.0f);
+        g.setColour (text.withAlpha (0.65f));
         g.setFont (juce::FontOptions (7.5f));
-        g.drawText (title, r.getX() + 7, r.getY() + 4, r.getWidth() - 14, 12,
+        g.drawText (title, r.getX() + 10, r.getY() + 4, r.getWidth() - 17, 12,
                     juce::Justification::centredLeft);
-        g.setColour (border.withAlpha (0.25f));
+        g.setColour (accent.withAlpha (0.12f));
         g.fillRect (r.getX() + 5, r.getY() + 16, r.getWidth() - 10, 1);
     };
     drawPanel (chorusR, "CHORUS");
     drawPanel (delayR,  "DELAY");
-    drawPanel (satR,    "SATURATION  (2× OS)");
+    drawPanel (satR,    "SATURATION (2x OS)");
     drawPanel (reverbR, "REVERB");
 }
 
@@ -795,16 +821,46 @@ void EQVisualizer::paint (juce::Graphics& g)
     g.setColour (surface);
     g.fillRoundedRectangle (getLocalBounds().toFloat(), 4.0f);
 
-    // Frequency grid
+    // Grid lines and axis labels
     {
+        // Vertical frequency grid
         const float gridFreqs[] = { 50, 100, 200, 500, 1000, 2000, 5000, 10000 };
-        g.setColour (border.withAlpha (0.25f));
+        g.setColour (border.withAlpha (0.2f));
         for (float f : gridFreqs)
             g.drawVerticalLine ((int) freqToX (f), 2.0f, H - 2.0f);
 
-        const float zeroY = gainToY (0.0f);
+        // Horizontal dB grid (±6, ±12)
+        const float gainGridDb[] = { -12.0f, -6.0f, 6.0f, 12.0f };
+        g.setColour (border.withAlpha (0.12f));
+        for (float db : gainGridDb)
+            g.drawHorizontalLine ((int) gainToY (db), 2.0f, W - 2.0f);
+
+        // 0 dB reference line (brighter)
         g.setColour (border.withAlpha (0.4f));
-        g.drawHorizontalLine ((int) zeroY, 2.0f, W - 2.0f);
+        g.drawHorizontalLine ((int) gainToY (0.0f), 2.0f, W - 2.0f);
+
+        // Frequency axis labels
+        const struct { float f; const char* lbl; } fLabels[] = {
+            { 100.f, "100" }, { 500.f, "500" }, { 1000.f, "1k" }, { 5000.f, "5k" }, { 10000.f, "10k" }
+        };
+        g.setFont (juce::FontOptions (7.0f));
+        g.setColour (subtext.withAlpha (0.4f));
+        for (auto& fl : fLabels)
+        {
+            const int fx = (int) freqToX (fl.f);
+            g.drawText (fl.lbl, fx - 12, (int)(H - 13.0f), 24, 11,
+                        juce::Justification::centred);
+        }
+
+        // dB scale labels
+        const struct { float db; const char* lbl; } dbLabels[] = {
+            { 12.0f, "+12" }, { 0.0f, "0" }, { -12.0f, "-12" }
+        };
+        for (auto& dl : dbLabels)
+        {
+            g.drawText (dl.lbl, 2, (int)(gainToY (dl.db) - 6.0f), 20, 12,
+                        juce::Justification::centredLeft);
+        }
     }
 
     // Live FFT spectrum
@@ -931,11 +987,13 @@ void EQTab::paint (juce::Graphics& g)
         g.fillRoundedRectangle (r.toFloat(), 6.0f);
         g.setColour (border.withAlpha (0.5f));
         g.drawRoundedRectangle (r.toFloat(), 6.0f, 0.7f);
-        g.setColour (subtext.withAlpha (0.7f));
+        g.setColour (accent.withAlpha (0.55f));
+        g.fillRoundedRectangle ((float)(r.getX() + 5), (float)(r.getY() + 5), 2.0f, 9.0f, 1.0f);
+        g.setColour (text.withAlpha (0.65f));
         g.setFont (juce::FontOptions (7.5f));
-        g.drawText (title, r.getX() + 7, r.getY() + 4, r.getWidth() - 14, 12,
+        g.drawText (title, r.getX() + 10, r.getY() + 4, r.getWidth() - 17, 12,
                     juce::Justification::centredLeft);
-        g.setColour (border.withAlpha (0.25f));
+        g.setColour (accent.withAlpha (0.12f));
         g.fillRect (r.getX() + 5, r.getY() + 16, r.getWidth() - 10, 1);
     };
     drawPanel (lowR,  "LOW SHELF");
@@ -1089,14 +1147,16 @@ void Synth1_0AudioProcessorEditor::paint (juce::Graphics& g)
     using namespace SynthColors;
     g.fillAll (bg);
 
-    g.setColour (surface);
+    g.setGradientFill (juce::ColourGradient (
+        surface.brighter (0.12f), 0.0f, 0.0f,
+        surface,                 0.0f, (float) kHeaderH, false));
     g.fillRect (0, 0, getWidth(), kHeaderH);
     g.setColour (accent.withAlpha (0.2f));
     g.fillRect (0, kHeaderH - 1, getWidth(), 1);
 
     g.setColour (accent);
     g.setFont (juce::FontOptions (13.5f));
-    g.drawText ("SYNTH  1.0", kPad, 0, 180, kHeaderH, juce::Justification::centredLeft);
+    g.drawText ("SYNTH 1.0", kPad, 0, 180, kHeaderH, juce::Justification::centredLeft);
 
     g.setColour (subtext);
     g.setFont (juce::FontOptions (9.0f));
