@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<Parameters>
+  <PARAM id="attack" value="0.01000000070780516"/>
+  <PARAM id="chorusDepth" value="0.25"/>
+  <PARAM id="chorusMix" value="0.1600000113248825"/>
+  <PARAM id="chorusRate" value="1.0"/>
+  <PARAM id="cutoff" value="8000.0"/>
+  <PARAM id="decay" value="0.1000000089406967"/>
+  <PARAM id="delayFeedback" value="0.300000011920929"/>
+  <PARAM id="delayMix" value="0.2590000033378601"/>
+  <PARAM id="delayTime" value="250.0"/>
+  <PARAM id="drive" value="1.0"/>
+  <PARAM id="eqHighFreq" value="1569.0"/>
+  <PARAM id="eqHighGain" value="-18.0"/>
+  <PARAM id="eqLowFreq" value="116.0"/>
+  <PARAM id="eqLowGain" value="-0.6999988555908203"/>
+  <PARAM id="eqMidFreq" value="627.0"/>
+  <PARAM id="eqMidGain" value="17.40000152587891"/>
+  <PARAM id="eqMidQ" value="0.9999999403953552"/>
+  <PARAM id="gain" value="0.7000000476837158"/>
+  <PARAM id="glideTime" value="0.6830000281333923"/>
+  <PARAM id="lfoCutoffDepth" value="0.0"/>
+  <PARAM id="lfoPitchDepth" value="0.0"/>
+  <PARAM id="lfoRate" value="0.9999999403953552"/>
+  <PARAM id="release" value="0.2000000029802322"/>
+  <PARAM id="resonance" value="0.699999988079071"/>
+  <PARAM id="reverbDamping" value="0.5"/>
+  <PARAM id="reverbMix" value="0.2190000116825104"/>
+  <PARAM id="reverbSize" value="0.5"/>
+  <PARAM id="satDrive" value="4.550000190734863"/>
+  <PARAM id="satMix" value="0.1570000052452087"/>
+  <PARAM id="sustain" value="0.800000011920929"/>
+  <PARAM id="unisonDetune" value="0.213000014424324"/>
+  <PARAM id="unisonSpread" value="0.2560000121593475"/>
+  <PARAM id="unisonVoices" value="1.0"/>
+  <PARAM id="voiceMode" value="1.0"/>
+  <PARAM id="warpAmount" value="0.232000008225441"/>
+  <PARAM id="warpMode" value="0.0"/>
+  <PARAM id="wtPosition" value="0.0"/>
+</Parameters>
