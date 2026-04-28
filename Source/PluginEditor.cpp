@@ -1072,7 +1072,23 @@ void Synth1_0AudioProcessorEditor::populatePresets()
     for (int i = 0; i < files.size(); ++i)
         presetBox.addItem (files[i].getFileNameWithoutExtension(), i + 2);
 
-    presetBox.setSelectedId (1, juce::dontSendNotification);
+    // Restore previously selected preset from the state property written by loadPreset/savePreset
+    const juce::String stored = audioProcessor.apvts.state
+                                    .getProperty ("currentPreset", juce::var (""))
+                                    .toString();
+    int selectId = 1;
+    if (stored.isNotEmpty())
+    {
+        for (int i = 0; i < files.size(); ++i)
+        {
+            if (files[i].getFileNameWithoutExtension() == stored)
+            {
+                selectId = i + 2;
+                break;
+            }
+        }
+    }
+    presetBox.setSelectedId (selectId, juce::dontSendNotification);
 }
 
 void Synth1_0AudioProcessorEditor::savePreset()
@@ -1090,6 +1106,8 @@ void Synth1_0AudioProcessorEditor::savePreset()
             file = file.withFileExtension ("xml");
             if (auto xml = audioProcessor.apvts.copyState().createXml())
                 xml->writeTo (file);
+            audioProcessor.apvts.state.setProperty (
+                "currentPreset", file.getFileNameWithoutExtension(), nullptr);
             populatePresets();
         });
 }
@@ -1098,7 +1116,12 @@ void Synth1_0AudioProcessorEditor::loadPreset (const juce::File& f)
 {
     if (auto xml = juce::parseXML (f))
         if (xml->hasTagName (audioProcessor.apvts.state.getType()))
+        {
             audioProcessor.apvts.replaceState (juce::ValueTree::fromXml (*xml));
+            // Store the preset name so it survives close/reopen
+            audioProcessor.apvts.state.setProperty (
+                "currentPreset", f.getFileNameWithoutExtension(), nullptr);
+        }
 }
 
 Synth1_0AudioProcessorEditor::Synth1_0AudioProcessorEditor (Synth1_0AudioProcessor& p)
