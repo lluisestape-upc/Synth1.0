@@ -5,7 +5,7 @@ Serum-inspired architecture: wavetable morphing, oscillator warp, LFO engine, un
 
 ---
 
-
+<img width="1202" height="543" alt="image" src="https://github.com/user-attachments/assets/d764ba3e-4ca1-4e62-8136-4405b65fafb6" />
 
 ## Features
 
@@ -39,6 +39,8 @@ Serum-inspired architecture: wavetable morphing, oscillator warp, LFO engine, un
 - **Mod-depth ring** — the Cutoff knob draws a live amber arc showing the LFO sweep range
 - Real-time LFO scope from a lock-free circular buffer
 
+<img width="1206" height="581" alt="image" src="https://github.com/user-attachments/assets/8ef27513-77e7-493f-8402-797d99efd495" />
+
 ### 3-Band EQ (EQ tab)
 - Low Shelf · Mid Bell (peak) · High Shelf
 - **Interactive visualizer** — drag band handles directly on the frequency response display:
@@ -47,7 +49,7 @@ Serum-inspired architecture: wavetable morphing, oscillator warp, LFO engine, un
   - Scroll wheel on the mid-band handle: adjust Q (0.1 – 10)
 - Live FFT spectrum overlay (2048-point Hann-windowed, 30 Hz refresh)
 
-<img width="1092" height="586" alt="image" src="https://github.com/user-attachments/assets/ac1eac33-7274-4cb9-bc26-a57d5e18db62" />
+<img width="1203" height="573" alt="image" src="https://github.com/user-attachments/assets/5e32aa53-250a-4184-ab98-12c4f49eb8e2" />
 
 ### FX Rack (FX tab)
 | Effect | Controls | Notes |
@@ -57,12 +59,16 @@ Serum-inspired architecture: wavetable morphing, oscillator warp, LFO engine, un
 | **Saturation** | Drive · Mix | `tanh` wave shaper with **2× oversampling** to eliminate aliasing |
 | **Reverb** | Size · Damping · Mix | `juce::dsp::Reverb` (Schroeder/Moorer) |
 
+<img width="1209" height="578" alt="image" src="https://github.com/user-attachments/assets/bf172ba7-9b7e-4e57-930f-f54d2fd952be" />
+
+### Sequencer
+
+<img width="1207" height="578" alt="image" src="https://github.com/user-attachments/assets/214cc9d5-61aa-4366-84b0-ce96de1b9c28" />
+
 ### Preset System
 - **Save** — exports current APVTS state as XML via file dialog
 - **Load** — ComboBox populated from `Documents/Synth1_0/Presets/*.xml`; selecting a preset applies it instantly
 - Fully state-serialized: all parameters saved and restored
-
-<img width="1087" height="576" alt="image" src="https://github.com/user-attachments/assets/e2a8630f-4dba-451e-ad19-1f72b36af2f4" />
 
 ### UI
 - Tabbed layout: **MAIN · MOD · FX · EQ** — 800 × 358 px
