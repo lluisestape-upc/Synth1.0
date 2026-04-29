@@ -5,7 +5,7 @@ Serum-inspired architecture: wavetable morphing, oscillator warp, LFO engine, un
 
 ---
 
-<img width="1089" height="584" alt="image" src="https://github.com/user-attachments/assets/e0978c00-7013-40fa-a7b0-d3708636fec2" />
+
 
 ## Features
 
