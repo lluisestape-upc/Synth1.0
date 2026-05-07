@@ -5,7 +5,7 @@ Serum-inspired architecture: wavetable morphing, oscillator warp, LFO engine, un
 
 ---
 
-<img width="1202" height="543" alt="image" src="https://github.com/user-attachments/assets/d764ba3e-4ca1-4e62-8136-4405b65fafb6" />
+<img width="1516" height="680" alt="image" src="https://github.com/user-attachments/assets/2d9d1912-7c08-4e3d-b97f-b5d761f3925f" />
 
 ## Features
 
@@ -39,7 +39,7 @@ Serum-inspired architecture: wavetable morphing, oscillator warp, LFO engine, un
 - **Mod-depth ring** — the Cutoff knob draws a live amber arc showing the LFO sweep range
 - Real-time LFO scope from a lock-free circular buffer
 
-<img width="1206" height="581" alt="image" src="https://github.com/user-attachments/assets/8ef27513-77e7-493f-8402-797d99efd495" />
+<img width="1511" height="690" alt="image" src="https://github.com/user-attachments/assets/a1c4b048-32e5-4984-90a1-858d0d57ae6f" />
 
 ### 3-Band EQ (EQ tab)
 - Low Shelf · Mid Bell (peak) · High Shelf
@@ -49,7 +49,7 @@ Serum-inspired architecture: wavetable morphing, oscillator warp, LFO engine, un
   - Scroll wheel on the mid-band handle: adjust Q (0.1 – 10)
 - Live FFT spectrum overlay (2048-point Hann-windowed, 30 Hz refresh)
 
-<img width="1203" height="573" alt="image" src="https://github.com/user-attachments/assets/5e32aa53-250a-4184-ab98-12c4f49eb8e2" />
+<img width="1515" height="679" alt="image" src="https://github.com/user-attachments/assets/7d4d3c0f-8697-4ef4-9312-dd93ca7cbfa4" />
 
 ### FX Rack (FX tab)
 | Effect | Controls | Notes |
@@ -60,7 +60,7 @@ Serum-inspired architecture: wavetable morphing, oscillator warp, LFO engine, un
 | **Phaser** | Rate · Depth · Mix | `juce::dsp::Phaser`; centre frequency fixed at 1300 Hz |
 | **Reverb** | Size · Damping · Mix | `juce::dsp::Reverb` (Schroeder/Moorer) |
 
-<img width="1209" height="578" alt="image" src="https://github.com/user-attachments/assets/bf172ba7-9b7e-4e57-930f-f54d2fd952be" />
+<img width="1518" height="685" alt="image" src="https://github.com/user-attachments/assets/4dd01168-d6b6-498a-9117-9d270e6d5fad" />
 
 ### Step Sequencer (SEQ tab)
 - Up to **16 steps** (selectable: 4 / 8 / 16) with per-step MIDI note, velocity, and active/mute toggle
@@ -69,7 +69,7 @@ Serum-inspired architecture: wavetable morphing, oscillator warp, LFO engine, un
 - Step state (notes, velocities, active flags) is **fully serialized** in the plugin state
 - Real-time step highlight shows the currently playing step at 30 Hz
 
-<img width="1207" height="578" alt="image" src="https://github.com/user-attachments/assets/214cc9d5-61aa-4366-84b0-ce96de1b9c28" />
+<img width="1518" height="685" alt="image" src="https://github.com/user-attachments/assets/2a8e9a09-a0eb-4cac-9a63-cfaa9ea21606" />
 
 ### Preset System
 - **Save** — exports current APVTS state as XML via file dialog
