@@ -39,9 +39,9 @@ All custom code lives in `Source/`:
 
 - **`SynthVoice.h`** — Header-only `juce::SynthesiserVoice`. Holds `kMaxUnisonVoices=8` oscillators, one `juce::ADSR`, and one stereo `juce::dsp::StateVariableTPTFilter<float>`. Glide uses `SmoothedValue<float, Multiplicative>` (smoothedFreqHz) — only activates when ADSR is already active at note start. `setLegatoNote()` changes pitch without triggering ADSR. Signal chain: unison oscs (with warp) → constant-power panning → tanh drive → SVT filter → ADSR × velocity.
 
-- **`PluginProcessor.h/.cpp`** — Owns `juce::Synthesiser` (16 voices) and APVTS. `processBlock()` preprocesses MIDI for Mono/Legato voice modes (note stack in `monoNoteStack`, tracks `currentMonoNote`). Signal chain: LFO → Voices → Master Gain → Chorus → Delay → Saturation (2× OS) → 3-Band EQ → SpecVisBuf feed → Reverb.
+- **`PluginProcessor.h/.cpp`** — Owns `juce::Synthesiser` (16 voices) and APVTS. `processBlock()` preprocesses MIDI for Mono/Legato voice modes (note stack in `monoNoteStack`, tracks `currentMonoNote`) and injects sequencer MIDI before voice processing. Signal chain: LFO → Voices → Master Gain → Chorus → Phaser → Delay → Saturation (2× OS) → 3-Band EQ → SpecVisBuf feed → Reverb. Sequencer state (`seqNotes`, `seqVelocities`, `seqActives`, `seqPlaying`, `seqTriggerMode`, `seqCurrentStep`) is lock-free (`std::atomic`) and serialized in `getStateInformation`/`setStateInformation` as a `Sequencer` child `ValueTree`.
 
-- **`PluginEditor.h/.cpp`** — 800×358, 4 tabs (MAIN/MOD/FX/EQ). `SynthLookAndFeel::drawRotarySlider` draws an amber LFO mod-depth ring outside the main arc when `slider.getComponentID() == "cutoff"` and `lfoCutoffDepth != nullptr`. `EQVisualizer` handles `mouseDown/Drag/Up/Wheel/Move/Exit` for interactive band editing — maps X↔log-freq, Y↔gain dB; calls `apvts.getParameter()->setValueNotifyingHost()`. `ComboBoxAttachment`s for choice params are created with `std::unique_ptr` *after* items are added to the combo (init-order fix). Preset system uses async `juce::FileChooser`; presets stored as XML in `userApplicationDataDirectory/Synth1_0/Presets/`.
+- **`PluginEditor.h/.cpp`** — 1000×456, 5 tabs (MAIN/MOD/FX/EQ/SEQ). `SynthColors` namespace holds mutable `juce::Colour` globals; `applySkin(index)` switches between 7 built-in themes (Mocha/Synthwave/Nord/Matrix/Sunset/Void/Ghost) and calls `SynthLookAndFeel::refreshColours()`. `SynthLookAndFeel::drawRotarySlider` draws an amber LFO mod-depth ring outside the main arc when `slider.getComponentID() == "cutoff"` and `lfoCutoffDepth != nullptr`. `EQVisualizer` handles `mouseDown/Drag/Up/Wheel/Move/Exit` for interactive band editing — maps X↔log-freq, Y↔gain dB; calls `apvts.getParameter()->setValueNotifyingHost()`. `ComboBoxAttachment`s for choice params are created with `std::unique_ptr` *after* items are added to the combo (init-order fix). Preset system uses async `juce::FileChooser`; presets stored as XML in `userApplicationDataDirectory/Synth1_0/Presets/`. `SeqTab` is a `juce::Timer` (30 Hz) that renders the step grid, dispatches mouse interactions for note/velocity/active editing, and mirrors `seqPlaying`/`seqTriggerMode` atomics from the processor.
 
 ## Parameters (APVTS IDs)
 
@@ -72,6 +72,11 @@ All custom code lives in `Source/`:
 | `delayMix` | 0–1 | 0 | |
 | `satDrive` | 1–20 | 1 | 2× oversampled tanh |
 | `satMix` | 0–1 | 0 | |
+| `phaserRate` | 0.1–20 Hz | 1.0 | skew 0.4 |
+| `phaserDepth` | 0–1 | 0.5 | |
+| `phaserMix` | 0–1 | 0 | |
+| `seqBPM` | 40–300 | 120 | internal sequencer clock |
+| `seqNumSteps` | choice 0–2 | 2 | 4/8/16 steps |
 | `eqLowFreq/Gain` | 20–2000 Hz / ±18 dB | 200/0 | low shelf |
 | `eqMidFreq/Gain/Q` | 200–8000 Hz / ±18 dB / 0.1–10 | 1000/0/1 | peak bell |
 | `eqHighFreq/Gain` | 1000–20000 Hz / ±18 dB | 5000/0 | high shelf |

@@ -1,7 +1,7 @@
 # Synth 1.0
 
 A polyphonic **wavetable synthesizer** VST3/Standalone plugin built with [JUCE 8](https://juce.com/).  
-Serum-inspired architecture: wavetable morphing, oscillator warp, LFO engine, unison, 3-band EQ, reverb, and a full FX rack with 2× oversampled saturation.
+Serum-inspired architecture: wavetable morphing, oscillator warp, LFO engine, unison, step sequencer, 3-band EQ, reverb, and a full FX rack with 2× oversampled saturation.
 
 ---
 
@@ -57,11 +57,17 @@ Serum-inspired architecture: wavetable morphing, oscillator warp, LFO engine, un
 | **Chorus** | Mix · Rate · Depth | `juce::dsp::Chorus` |
 | **Delay** | Time · Feedback · Mix | Stereo delay; snaps to quarter-note when DAW tempo is available |
 | **Saturation** | Drive · Mix | `tanh` wave shaper with **2× oversampling** to eliminate aliasing |
+| **Phaser** | Rate · Depth · Mix | `juce::dsp::Phaser`; centre frequency fixed at 1300 Hz |
 | **Reverb** | Size · Damping · Mix | `juce::dsp::Reverb` (Schroeder/Moorer) |
 
 <img width="1209" height="578" alt="image" src="https://github.com/user-attachments/assets/bf172ba7-9b7e-4e57-930f-f54d2fd952be" />
 
-### Sequencer
+### Step Sequencer (SEQ tab)
+- Up to **16 steps** (selectable: 4 / 8 / 16) with per-step MIDI note, velocity, and active/mute toggle
+- **Internal clock mode** — free-running BPM (40–300), play/stop button
+- **DAW-trigger mode** — each incoming MIDI note-on advances one step; pitch/velocity replaced by sequencer values
+- Step state (notes, velocities, active flags) is **fully serialized** in the plugin state
+- Real-time step highlight shows the currently playing step at 30 Hz
 
 <img width="1207" height="578" alt="image" src="https://github.com/user-attachments/assets/214cc9d5-61aa-4366-84b0-ce96de1b9c28" />
 
@@ -71,9 +77,9 @@ Serum-inspired architecture: wavetable morphing, oscillator warp, LFO engine, un
 - Fully state-serialized: all parameters saved and restored
 
 ### UI
-- Tabbed layout: **MAIN · MOD · FX · EQ** — 800 × 358 px
-- Dark theme (Catppuccin Mocha-inspired)
-- Custom `LookAndFeel`: arc-style rotary knobs, LFO mod-depth ring on Cutoff
+- Tabbed layout: **MAIN · MOD · FX · EQ · SEQ** — 1000 × 456 px
+- **7 color themes**: Mocha · Synthwave · Nord · Matrix · Sunset · Void · Ghost — switchable live via skin selector
+- Custom `LookAndFeel`: gradient knob faces with drop shadows, glowing value arcs, LFO mod-depth ring on Cutoff
 - All controls bound to APVTS — fully automatable
 
 ---
@@ -114,8 +120,8 @@ Builds/VisualStudio2022/x64/Debug/Synth1_0 - VST3/Synth1_0.vst3/
 
 ```
 Source/
-├── PluginProcessor.h/.cpp   — APVTS, LFO engine, Mono/Legato MIDI, FX chain
-├── PluginEditor.h/.cpp      — Tabbed UI, interactive EQ, preset bar, mod rings
+├── PluginProcessor.h/.cpp   — APVTS, LFO engine, Mono/Legato MIDI, sequencer, FX chain
+├── PluginEditor.h/.cpp      — Tabbed UI (MAIN/MOD/FX/EQ/SEQ), interactive EQ, preset bar, skins
 ├── SynthVoice.h             — Unison engine, glide, warp, SVT filter, ADSR
 ├── WavetableOscillator.h    — Band-limited wavetable with phase-warp modes
 └── SynthSound.h             — Trivial SynthesiserSound marker
@@ -123,11 +129,11 @@ Source/
 
 ### Signal chain (`processBlock`)
 ```
-MIDI (mono/legato pre-process) →
+MIDI (mono/legato pre-process + sequencer injection) →
   LFO →
   Voices (unison + warp + glide + filter + ADSR) →
   Master Gain →
-  Chorus → Delay → Saturation (2× OS) → 3-Band EQ →
+  Chorus → Phaser → Delay → Saturation (2× OS) → 3-Band EQ →
   SpecVisBuf (FFT feed) →
   Reverb
 ```
@@ -168,6 +174,11 @@ MIDI (mono/legato pre-process) →
 | `delayMix` | 0 – 1 | 0 | Delay wet level |
 | `satDrive` | 1 – 20 | 1 | Saturation drive |
 | `satMix` | 0 – 1 | 0 | Saturation wet level |
+| `phaserRate` | 0.1 – 20 Hz | 1 Hz | Phaser LFO rate |
+| `phaserDepth` | 0 – 1 | 0.5 | Phaser modulation depth |
+| `phaserMix` | 0 – 1 | 0 | Phaser wet level |
+| `seqBPM` | 40 – 300 | 120 | Sequencer internal BPM |
+| `seqNumSteps` | 4/8/16 | 16 | Number of active sequencer steps |
 | `eqLowFreq/Gain` | 20–2000 Hz / ±18 dB | 200/0 | Low shelf |
 | `eqMidFreq/Gain/Q` | 200–8000 Hz / ±18 dB / 0.1–10 | 1000/0/1 | Mid bell |
 | `eqHighFreq/Gain` | 1–20 kHz / ±18 dB | 5000/0 | High shelf |

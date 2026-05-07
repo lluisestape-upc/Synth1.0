@@ -88,6 +88,17 @@ Synth1_0AudioProcessor::createParameterLayout()
         ParameterID{"satMix",   1}, "Sat Mix",
         NormalisableRange<float>{0.0f, 1.0f, 0.001f}, 0.0f));
 
+    // ── FX: Phaser ────────────────────────────────────────────────────────────
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"phaserRate",  1}, "Phaser Rate",
+        NormalisableRange<float>{0.1f, 20.0f, 0.01f, 0.4f}, 1.0f));
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"phaserDepth", 1}, "Phaser Depth",
+        NormalisableRange<float>{0.0f, 1.0f, 0.001f}, 0.5f));
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"phaserMix",   1}, "Phaser Mix",
+        NormalisableRange<float>{0.0f, 1.0f, 0.001f}, 0.0f));
+
     // ── Unison ────────────────────────────────────────────────────────────────
     layout.add (std::make_unique<AudioParameterFloat>(
         ParameterID{"unisonVoices", 1}, "Unison Voices",
@@ -149,6 +160,14 @@ Synth1_0AudioProcessor::createParameterLayout()
         ParameterID{"warpAmount", 1}, "Warp Amount",
         NormalisableRange<float>{0.0f, 1.0f, 0.001f}, 0.0f));
 
+    // ── Sequencer ─────────────────────────────────────────────────────────────
+    layout.add (std::make_unique<AudioParameterFloat>(
+        ParameterID{"seqBPM", 1}, "Seq BPM",
+        NormalisableRange<float>{40.0f, 300.0f, 0.1f}, 120.0f));
+    layout.add (std::make_unique<AudioParameterChoice>(
+        ParameterID{"seqNumSteps", 1}, "Seq Steps",
+        juce::StringArray{"4", "8", "16"}, 2));
+
     return layout;
 }
 
@@ -177,6 +196,9 @@ Synth1_0AudioProcessor::Synth1_0AudioProcessor()
     delayMixParam       = apvts.getRawParameterValue ("delayMix");
     satDriveParam       = apvts.getRawParameterValue ("satDrive");
     satMixParam         = apvts.getRawParameterValue ("satMix");
+    phaserRateParam     = apvts.getRawParameterValue ("phaserRate");
+    phaserDepthParam    = apvts.getRawParameterValue ("phaserDepth");
+    phaserMixParam      = apvts.getRawParameterValue ("phaserMix");
     eqLowFreqParam      = apvts.getRawParameterValue ("eqLowFreq");
     eqLowGainParam      = apvts.getRawParameterValue ("eqLowGain");
     eqMidFreqParam      = apvts.getRawParameterValue ("eqMidFreq");
@@ -191,6 +213,15 @@ Synth1_0AudioProcessor::Synth1_0AudioProcessor()
     glideTimeParam      = apvts.getRawParameterValue ("glideTime");
     warpModeParam       = apvts.getRawParameterValue ("warpMode");
     warpAmountParam     = apvts.getRawParameterValue ("warpAmount");
+    seqBPMParam         = apvts.getRawParameterValue ("seqBPM");
+    seqNumStepsParam    = apvts.getRawParameterValue ("seqNumSteps");
+
+    for (int i = 0; i < kSeqMaxSteps; ++i)
+    {
+        seqNotes[i].store (60);
+        seqVelocities[i].store (100);
+        seqActives[i].store (true);
+    }
 
     for (int i = 0; i < 16; ++i)
         synth.addVoice (new SynthVoice (apvts));
@@ -209,11 +240,14 @@ void Synth1_0AudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
         if (auto* v = dynamic_cast<SynthVoice*> (synth.getVoice (i)))
             v->prepareToPlay (sampleRate, samplesPerBlock);
 
-    // Chorus
+    // Chorus + Phaser
     juce::dsp::ProcessSpec spec { sampleRate, static_cast<uint32_t>(samplesPerBlock), 2 };
     chorus.prepare (spec);
     chorus.setCentreDelay (7.0f);
     chorus.setFeedback    (0.0f);
+    phaser.prepare (spec);
+    phaser.setCentreFrequency (1300.0f);
+    phaser.setFeedback        (0.0f);
 
     // Delay lines (max 2 s)
     juce::dsp::ProcessSpec monoSpec { sampleRate, static_cast<uint32_t>(samplesPerBlock), 1 };
@@ -256,6 +290,7 @@ void Synth1_0AudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
 void Synth1_0AudioProcessor::releaseResources()
 {
     chorus.reset();
+    phaser.reset();
     delayLineL.reset();
     delayLineR.reset();
     oversampler.reset();
@@ -304,6 +339,122 @@ void Synth1_0AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     for (int i = 0; i < synth.getNumVoices(); ++i)
         if (auto* v = dynamic_cast<SynthVoice*> (synth.getVoice (i)))
             v->setLFOMod (cutoffMod, pitchMod);
+
+    // ── Sequencer MIDI injection / DAW-trigger ────────────────────────────────
+    {
+        const bool nowPlaying = seqPlaying.load     (std::memory_order_acquire);
+        const bool trigMode   = seqTriggerMode.load (std::memory_order_acquire);
+
+        const int sidx       = static_cast<int> (seqNumStepsParam->load() + 0.5f);
+        const int stepMap[]  = {4, 8, 16};
+        const int numSteps   = stepMap[juce::jlimit (0, 2, sidx)];
+
+        // ── Internal clock start / stop bookkeeping ───────────────────────
+        if (nowPlaying && !seqWasPlaying)
+        {
+            seqPhase = 1.0;
+            seqStep  = -1;
+        }
+        else if (!nowPlaying && seqWasPlaying && seqNoteOn >= 0)
+        {
+            midiMessages.addEvent (juce::MidiMessage::noteOff (1, seqNoteOn), 0);
+            seqNoteOn = -1;
+        }
+        seqWasPlaying = nowPlaying;
+
+        // ── Trigger mode turned off: release any held step note ───────────
+        if (!trigMode && seqWasTrigMode && seqTrigStepNote >= 0)
+        {
+            midiMessages.addEvent (juce::MidiMessage::noteOff (1, seqTrigStepNote), 0);
+            seqTrigStepNote = -1;
+        }
+        seqWasTrigMode = trigMode;
+
+        if (nowPlaying)
+        {
+            // ── Internal clock mode ───────────────────────────────────────
+            const float  bpm            = seqBPMParam->load();
+            const double stepsPerSample = (bpm / 60.0) / currentSR;
+
+            for (int i = 0; i < N; ++i)
+            {
+                seqPhase += stepsPerSample;
+                if (seqPhase >= 1.0)
+                {
+                    seqPhase -= 1.0;
+                    if (seqNoteOn >= 0)
+                    {
+                        midiMessages.addEvent (juce::MidiMessage::noteOff (1, seqNoteOn), i);
+                        seqNoteOn = -1;
+                    }
+                    seqStep = (seqStep + 1) % numSteps;
+                    seqCurrentStep.store (seqStep, std::memory_order_relaxed);
+                    if (seqActives[seqStep].load (std::memory_order_relaxed))
+                    {
+                        const int note = seqNotes[seqStep].load (std::memory_order_relaxed);
+                        const int vel  = seqVelocities[seqStep].load (std::memory_order_relaxed);
+                        midiMessages.addEvent (
+                            juce::MidiMessage::noteOn (1, note, (uint8_t) vel), i);
+                        seqNoteOn = note;
+                    }
+                }
+            }
+        }
+        else if (trigMode)
+        {
+            // ── DAW-trigger mode: each note-on from DAW advances one step ─
+            juce::MidiBuffer trigMidi;
+            for (const auto& meta : midiMessages)
+            {
+                auto msg = meta.getMessage();
+                if (msg.isNoteOn())
+                {
+                    // Release currently playing step note
+                    if (seqTrigStepNote >= 0)
+                    {
+                        trigMidi.addEvent (juce::MidiMessage::noteOff (1, seqTrigStepNote),
+                                           meta.samplePosition);
+                        seqTrigStepNote = -1;
+                    }
+
+                    // Advance to next active step (skip inactive ones)
+                    for (int tries = 0; tries < numSteps; ++tries)
+                    {
+                        seqTrigStep = (seqTrigStep + 1) % numSteps;
+                        if (seqActives[seqTrigStep].load (std::memory_order_relaxed))
+                            break;
+                    }
+                    seqCurrentStep.store (seqTrigStep, std::memory_order_relaxed);
+
+                    if (seqActives[seqTrigStep].load (std::memory_order_relaxed))
+                    {
+                        const int note = seqNotes[seqTrigStep].load (std::memory_order_relaxed);
+                        const int vel  = seqVelocities[seqTrigStep].load (std::memory_order_relaxed);
+                        trigMidi.addEvent (
+                            juce::MidiMessage::noteOn (msg.getChannel(), note, (uint8_t) vel),
+                            meta.samplePosition);
+                        seqTrigStepNote = note;
+                    }
+                }
+                else if (msg.isNoteOff())
+                {
+                    // Release the step note, not the original played note
+                    if (seqTrigStepNote >= 0)
+                    {
+                        trigMidi.addEvent (juce::MidiMessage::noteOff (1, seqTrigStepNote),
+                                           meta.samplePosition);
+                        seqTrigStepNote = -1;
+                    }
+                }
+                else
+                {
+                    trigMidi.addEvent (msg, meta.samplePosition);
+                }
+            }
+            midiMessages.clear();
+            midiMessages.addEvents (trigMidi, 0, -1, 0);
+        }
+    }
 
     // ── Synth (with Mono/Legato MIDI preprocessing) ───────────────────────────
     {
@@ -405,6 +556,20 @@ void Synth1_0AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             juce::dsp::AudioBlock<float>           block  (buffer);
             juce::dsp::ProcessContextReplacing<float> ctx (block);
             chorus.process (ctx);
+        }
+    }
+
+    // ── Phaser ────────────────────────────────────────────────────────────────
+    {
+        const float phaserMix = phaserMixParam->load();
+        if (phaserMix > 0.001f)
+        {
+            phaser.setRate  (phaserRateParam->load());
+            phaser.setDepth (phaserDepthParam->load());
+            phaser.setMix   (phaserMix);
+            juce::dsp::AudioBlock<float>              block (buffer);
+            juce::dsp::ProcessContextReplacing<float> ctx   (block);
+            phaser.process (ctx);
         }
     }
 
@@ -554,6 +719,18 @@ void Synth1_0AudioProcessor::processDelay (juce::AudioBuffer<float>& buffer, int
 void Synth1_0AudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
+
+    juce::ValueTree seqState ("Sequencer");
+    for (int i = 0; i < kSeqMaxSteps; ++i)
+    {
+        juce::ValueTree step ("Step");
+        step.setProperty ("note",     seqNotes[i].load(),                    nullptr);
+        step.setProperty ("velocity", seqVelocities[i].load(),               nullptr);
+        step.setProperty ("active",   seqActives[i].load() ? 1 : 0,          nullptr);
+        seqState.appendChild (step, nullptr);
+    }
+    state.appendChild (seqState, nullptr);
+
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
 }
@@ -562,7 +739,24 @@ void Synth1_0AudioProcessor::setStateInformation (const void* data, int sizeInBy
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
         if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        {
+            auto state = juce::ValueTree::fromXml (*xml);
+            apvts.replaceState (state);
+
+            auto seqState = state.getChildWithName ("Sequencer");
+            if (seqState.isValid())
+            {
+                int i = 0;
+                for (auto step : seqState)
+                {
+                    if (i >= kSeqMaxSteps) break;
+                    seqNotes[i].store      (static_cast<int> (step.getProperty ("note",     60)));
+                    seqVelocities[i].store (static_cast<int> (step.getProperty ("velocity", 100)));
+                    seqActives[i].store    (static_cast<int> (step.getProperty ("active",   1)) != 0);
+                    ++i;
+                }
+            }
+        }
 }
 
 //==============================================================================

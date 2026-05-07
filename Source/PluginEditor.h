@@ -5,15 +5,11 @@
 
 namespace SynthColors
 {
-    const juce::Colour bg      { 0xff0f0f1a };
-    const juce::Colour surface { 0xff191928 };
-    const juce::Colour panel   { 0xff1e1e30 };
-    const juce::Colour border  { 0xff35355a };
-    const juce::Colour accent  { 0xff89b4fa };
-    const juce::Colour text    { 0xffe0e0f0 };
-    const juce::Colour subtext { 0xff6868a0 };
-    const juce::Colour track   { 0xff2a2a42 };
-    const juce::Colour modRing { 0xfffab387 };  // amber — LFO mod ring
+    extern juce::Colour bg, surface, panel, border, accent, text, subtext, track, modRing;
+    void        applySkin        (int index);
+    int         getCurrentSkinIndex ();
+    int         getNumSkins      ();
+    const char* getSkinName      (int index);
 }
 
 //==============================================================================
@@ -21,12 +17,14 @@ class SynthLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
     SynthLookAndFeel();
+    void refreshColours();
     void drawRotarySlider (juce::Graphics&, int x, int y, int w, int h,
                            float sliderPos, float startAngle, float endAngle,
                            juce::Slider&) override;
     void drawLinearSlider  (juce::Graphics&, int x, int y, int w, int h,
                             float sliderPos, float minSliderPos, float maxSliderPos,
                             juce::Slider::SliderStyle, juce::Slider&) override;
+    void drawLabel         (juce::Graphics&, juce::Label&) override;
 
     // Set by editor to enable the LFO modulation ring on the cutoff knob
     std::atomic<float>* lfoCutoffDepth = nullptr;
@@ -82,7 +80,7 @@ inline void setupKnob (juce::Slider& s, juce::Label& l,
     parent->addAndMakeVisible (s);
     l.setText (name, juce::dontSendNotification);
     l.setJustificationType (juce::Justification::centred);
-    l.setFont (juce::FontOptions (9.0f));
+    l.setFont (juce::FontOptions (9.5f));
     parent->addAndMakeVisible (l);
 }
 
@@ -200,13 +198,19 @@ private:
     juce::AudioProcessorValueTreeState::SliderAttachment
         satDriveAttach, satMixAttach;
 
+    // Phaser
+    juce::Slider phaserRateSlider, phaserDepthSlider, phaserMixSlider;
+    juce::Label  phaserRateLabel,  phaserDepthLabel,  phaserMixLabel;
+    juce::AudioProcessorValueTreeState::SliderAttachment
+        phaserRateAttach, phaserDepthAttach, phaserMixAttach;
+
     // Reverb
     juce::Slider reverbSizeSlider, reverbDampingSlider, reverbMixSlider;
     juce::Label  reverbSizeLabel,  reverbDampingLabel,  reverbMixLabel;
     juce::AudioProcessorValueTreeState::SliderAttachment
         reverbSizeAttach, reverbDampingAttach, reverbMixAttach;
 
-    juce::Rectangle<int> chorusR, delayR, satR, reverbR;
+    juce::Rectangle<int> chorusR, delayR, satR, phaserR, reverbR;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FXTab)
 };
 
@@ -288,6 +292,45 @@ private:
 };
 
 //==============================================================================
+class SeqTab : public juce::Component, public juce::Timer
+{
+public:
+    explicit SeqTab (Synth1_0AudioProcessor& p);
+    ~SeqTab() override;
+    void paint   (juce::Graphics&) override;
+    void resized () override;
+    void mouseDown      (const juce::MouseEvent&) override;
+    void mouseDrag      (const juce::MouseEvent&) override;
+    void mouseUp        (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    void timerCallback  () override;
+
+private:
+    static juce::String  midiNoteName (int note);
+    int                  getNumSteps  () const;
+    juce::Rectangle<int> getStepGridBounds () const;
+
+    Synth1_0AudioProcessor& proc;
+
+    juce::TextButton playBtn    { "PLAY" };
+    juce::TextButton triggerBtn { "TRIGGER" };
+
+    juce::Slider bpmSlider;
+    juce::Label  bpmLabel;
+    juce::AudioProcessorValueTreeState::SliderAttachment bpmAttach;
+
+    juce::ComboBox stepsCombo;
+    juce::Label    stepsLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> stepsAttach;
+
+    int dragStep     = -1;
+    int dragStartY   = 0;
+    int dragStartVel = 0;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SeqTab)
+};
+
+//==============================================================================
 class Synth1_0AudioProcessorEditor : public juce::AudioProcessorEditor
 {
 public:
@@ -297,6 +340,8 @@ public:
     void resized () override;
 
 private:
+    void setSkin (int index);
+
     Synth1_0AudioProcessor& audioProcessor;
     SynthLookAndFeel laf;
 
@@ -305,6 +350,9 @@ private:
     // Preset bar
     juce::ComboBox   presetBox;
     juce::TextButton saveBtn { "SAVE" };
+
+    // Skin selector
+    juce::ComboBox skinBox;
 
     juce::File getPresetsDir() const;
     void       populatePresets();

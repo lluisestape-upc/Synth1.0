@@ -82,6 +82,15 @@ public:
     // Spectrum vis buffer — larger ring to hold a full FFT window of audio data
     SpecVisBuf specVisBuf;
 
+    // Sequencer shared state (audio ↔ UI, lock-free)
+    static constexpr int kSeqMaxSteps = 16;
+    std::atomic<int>  seqNotes      [kSeqMaxSteps];
+    std::atomic<int>  seqVelocities [kSeqMaxSteps];
+    std::atomic<bool> seqActives    [kSeqMaxSteps];
+    std::atomic<int>  seqCurrentStep  { 0 };
+    std::atomic<bool> seqPlaying      { false };
+    std::atomic<bool> seqTriggerMode  { false };
+
 private:
     // ── Synth ─────────────────────────────────────────────────────────────────
     juce::Synthesiser synth;
@@ -99,6 +108,9 @@ private:
     std::atomic<float>* delayMixParam      = nullptr;
     std::atomic<float>* satDriveParam      = nullptr;
     std::atomic<float>* satMixParam        = nullptr;
+    std::atomic<float>* phaserRateParam    = nullptr;
+    std::atomic<float>* phaserDepthParam   = nullptr;
+    std::atomic<float>* phaserMixParam     = nullptr;
 
     // EQ
     std::atomic<float>* eqLowFreqParam    = nullptr;
@@ -130,6 +142,7 @@ private:
 
     // ── FX chain ──────────────────────────────────────────────────────────────
     juce::dsp::Chorus<float>   chorus;
+    juce::dsp::Phaser<float>   phaser;
 
     // Stereo delay lines (max 2 s)
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd>
@@ -152,6 +165,19 @@ private:
     juce::dsp::Reverb reverb;
 
     void processDelay (juce::AudioBuffer<float>&, int numSamples);
+
+    // Sequencer engine (audio thread only)
+    std::atomic<float>* seqBPMParam      = nullptr;
+    std::atomic<float>* seqNumStepsParam = nullptr;
+    double seqPhase        = 0.0;
+    int    seqStep         = -1;
+    int    seqNoteOn       = -1;
+    bool   seqWasPlaying   = false;
+
+    // Trigger-mode state (audio thread only)
+    int    seqTrigStep      = -1;
+    int    seqTrigStepNote  = -1;
+    bool   seqWasTrigMode   = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Synth1_0AudioProcessor)
 };
