@@ -189,3 +189,12 @@ MIDI (mono/legato pre-process + sequencer injection) →
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.
+---
+
+## 🔗 Download & more plugins
+
+This plugin is part of the **ESP free plugin collection**.
+Download it and find more free audio plugins at:
+
+👉 **[esp-plugin-store.vercel.app](https://esp-plugin-store.vercel.app)**
+
