@@ -95,6 +95,23 @@ private:
     // ── Synth ─────────────────────────────────────────────────────────────────
     juce::Synthesiser synth;
 
+    /** Renders the voices in fixed-size chunks, advancing the LFO once per chunk.
+
+        Everything modulated per block is a signal sampled at fs/N, where N is
+        whatever buffer size the host happens to use. Its Nyquist is fs/2N: 43 Hz
+        on a 512-sample buffer, 10.8 Hz on a 2048-sample one. With a 20 Hz LFO
+        that folds, and the rate knob stops meaning what it says as soon as the
+        user changes their buffer setting. Rendering in fixed chunks decouples
+        the control rate from the host: fs/32 = 1378 Hz at 44.1 kHz.
+
+        juce::Synthesiser::renderNextBlock takes MIDI positions as absolute
+        offsets into the buffer, so the same MidiBuffer can be handed to every
+        chunk with only startSample moving.
+    */
+    void renderVoices (juce::AudioBuffer<float>& buffer,
+                       const juce::MidiBuffer& midi,
+                       int numSamples);
+
     // ── Cached param pointers (audio thread only) ─────────────────────────────
     std::atomic<float>* masterGainParam    = nullptr;
     std::atomic<float>* lfoRateParam       = nullptr;
@@ -137,7 +154,16 @@ private:
     int              currentMonoNote = -1;
 
     // ── LFO engine ────────────────────────────────────────────────────────────
-    float  lfoPhase       = 0.0f;
+    // Control-rate chunk. 32 samples puts the modulation Nyquist at 689 Hz even
+    // at 44.1 kHz, which is two decades above the 20 Hz the rate knob allows.
+    static constexpr int kControlBlockSize = 32;
+
+    // The scope is decimated to a fixed interval rather than to the chunk, so
+    // its time span stays the same regardless of buffer size and control rate.
+    static constexpr int kLfoVisInterval = 512;
+
+    double lfoPhase       = 0.0;   // double: the accumulator runs for hours
+    int    lfoVisCounter  = 0;
     double currentSR      = 44100.0;
 
     // ── FX chain ──────────────────────────────────────────────────────────────

@@ -28,6 +28,12 @@ public:
     {
         currentSampleRate = sampleRate;
 
+        // The cutoff ceiling has to follow the sample rate, not a hard 20 kHz:
+        // the TPT filter needs cutoff < fs/2, and below a 40 kHz rate a 20 kHz
+        // cutoff sends std::tan(pi * fc / fs) past pi/2 and negative.
+        maxCutoffHz  = static_cast<float> (juce::jmin (20000.0, 0.49 * sampleRate));
+        lastCutoffHz = -1.0f;
+
         for (int u = 0; u < kMaxUnisonVoices; ++u)
             unisonOscs[u].prepare (sampleRate);
 
@@ -100,7 +106,27 @@ public:
             unisonOscs[u].setWavePosition (wtPos);
             unisonOscs[u].setWarpMode     (wm);
             unisonOscs[u].setWarpAmount   (wa);
-            unisonOscs[u].reset();
+
+            // Randomised, not zero and not evenly spaced.
+            //
+            // Resetting every unison oscillator to phase 0 made them one signal
+            // copied N times, so the 1/sqrt(N) normalisation below (the law for
+            // *incoherent* sources) left the attack of every note up to
+            // sqrt(8) = +9 dB hot, and at zero detune they never drifted apart:
+            // the voice-count knob was a gain knob.
+            //
+            // Evenly spaced phases (u/N) are worse, not better: summing N copies
+            // of one waveform at phases k/N cancels every harmonic that is not a
+            // multiple of N, so an 8-voice unison would come out three octaves up,
+            // on 8*f0, with seven eighths of its spectrum gone. Random phases
+            // decorrelate without that structure, which is exactly the assumption
+            // 1/sqrt(N) is already making.
+            //
+            // The generator is seeded from the voice's construction index, so a
+            // given note sequence from a fresh instance still renders identically.
+            // Oscillator 0 keeps phase 0 so that unison = 1 is bit-identical to
+            // the behaviour before this change.
+            unisonOscs[u].resetPhase (u == 0 ? 0.0 : rng.nextDouble());
         }
         adsr.noteOn();
     }
@@ -140,10 +166,19 @@ public:
         const float wa       = warpAmountParam->load();
         const float wtPos    = wtPositionParam->load();
 
-        // Block-rate glide + pitch LFO
-        const float glideHz = smoothedFreqHz.skip (numSamples);
-        const float pMod    = smoothPitchMod.skip (numSamples);
-        const float modBase = glideHz * std::pow (2.0f, pMod / 12.0f);
+        // Glide + pitch LFO, once per call. The processor now calls this on a
+        // fixed 32-sample control chunk rather than on the host's buffer, so
+        // the step size stops depending on the host: an octave portamento in
+        // 100 ms moves in ~9 cent steps at any buffer size, where it used to be
+        // 139 cents at 512 samples and 279 at 1024.
+        //
+        // Kept in double to the setFrequency call: the oscillator widened that
+        // argument on purpose (a float32 Hz value leaves the tone slightly
+        // non-periodic, measurable as -86 dBc of leakage) and computing the
+        // frequency in float threw the precision away one line before the call.
+        const double glideHz = smoothedFreqHz.skip (numSamples);
+        const double pMod    = smoothPitchMod.skip (numSamples);
+        const double modBase = glideHz * std::pow (2.0, pMod / 12.0);
 
         const auto ns = static_cast<size_t> (numSamples);
         if (ns > tempBuffer.size())
@@ -169,8 +204,8 @@ public:
                 pan      = 0.5f + (t - 0.5f) * spread;
             }
 
-            const float freq = juce::jlimit (20.0f, 20000.0f,
-                modBase * std::pow (2.0f, detuneSt / 12.0f));
+            const double freq = juce::jlimit (20.0, 20000.0,
+                modBase * std::pow (2.0, static_cast<double> (detuneSt) / 12.0));
 
             unisonOscs[u].setFrequency    (freq);
             unisonOscs[u].setWavePosition (wtPos);
@@ -194,7 +229,18 @@ public:
         {
             const float cMod = smoothCutoffMod.getNextValue();
             const float env  = adsr.getNextSample();
-            svFilter.setCutoffFrequency (juce::jlimit (20.0f, 20000.0f, cutoff + cMod));
+
+            // setCutoffFrequency() is not a store: it runs update(), which is a
+            // std::tan and two divisions. Called unconditionally per sample per
+            // voice it was 705,600 tangents a second at 16 voices, recomputing
+            // identical coefficients whenever the modulation was not moving,
+            // which includes every patch with the LFO cutoff depth at zero.
+            const float target = juce::jlimit (20.0f, maxCutoffHz, cutoff + cMod);
+            if (std::abs (target - lastCutoffHz) > lastCutoffHz * 1.0e-4f)
+            {
+                svFilter.setCutoffFrequency (target);
+                lastCutoffHz = target;
+            }
 
             float sL = juce::dsp::FastMathApproximations::tanh (stereoL[i] * drive);
             float sR = juce::dsp::FastMathApproximations::tanh (stereoR[i] * drive);
@@ -227,6 +273,14 @@ private:
     float currentMidiNote = 69.0f;
     double currentSampleRate = 44100.0;
     bool  isPrepared      = false;
+
+    float maxCutoffHz     = 20000.0f;   // 0.49 * fs, so the TPT filter stays sane
+    float lastCutoffHz    = -1.0f;      // last value actually pushed into svFilter
+
+    // Seeded from construction order so note-on phases are random but a fresh
+    // instance renders a given sequence identically twice.
+    inline static int sVoiceCounter = 0;
+    juce::Random rng { static_cast<juce::int64> (++sVoiceCounter) * 2654435761LL };
 
     std::atomic<float>* attackParam       = nullptr;
     std::atomic<float>* decayParam        = nullptr;

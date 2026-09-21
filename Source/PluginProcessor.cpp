@@ -3,6 +3,7 @@
 #include "SynthSound.h"
 #include "SynthVoice.h"
 #include <algorithm>
+#include <cmath>
 
 //==============================================================================
 juce::AudioProcessorValueTreeState::ParameterLayout
@@ -284,7 +285,8 @@ void Synth1_0AudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     // Reverb
     reverb.prepare ({ sampleRate, static_cast<uint32_t>(samplesPerBlock), 2 });
 
-    lfoPhase = 0.0f;
+    lfoPhase      = 0.0;
+    lfoVisCounter = 0;
 }
 
 void Synth1_0AudioProcessor::releaseResources()
@@ -316,6 +318,43 @@ bool Synth1_0AudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts)
 #endif
 
 //==============================================================================
+void Synth1_0AudioProcessor::renderVoices (juce::AudioBuffer<float>& buffer,
+                                           const juce::MidiBuffer& midi,
+                                           int numSamples)
+{
+    const float  cutoffDepth = lfoCutoffDepthParam->load();
+    const float  pitchDepth  = lfoPitchDepthParam->load();
+    const double phaseStep   = lfoRateParam->load() / currentSR;   // per sample
+
+    for (int offset = 0; offset < numSamples; offset += kControlBlockSize)
+    {
+        const int chunk = juce::jmin (kControlBlockSize, numSamples - offset);
+
+        // std::floor, not a single conditional subtract: at large buffer sizes
+        // the old `if (phase >= 1) phase -= 1` could be handed an increment
+        // above 1.0 and then never brought the phase back into range at all.
+        lfoPhase += phaseStep * chunk;
+        lfoPhase -= std::floor (lfoPhase);
+
+        const float lfoVal = std::sin (static_cast<float> (lfoPhase)
+                                       * juce::MathConstants<float>::twoPi);
+
+        // Push LFO mod to voices (audio thread — no synchronisation needed)
+        for (int i = 0; i < synth.getNumVoices(); ++i)
+            if (auto* v = dynamic_cast<SynthVoice*> (synth.getVoice (i)))
+                v->setLFOMod (lfoVal * cutoffDepth * 4000.0f, lfoVal * pitchDepth);
+
+        synth.renderNextBlock (buffer, midi, offset, chunk);
+
+        lfoVisCounter += chunk;
+        if (lfoVisCounter >= kLfoVisInterval)
+        {
+            lfoVisCounter -= kLfoVisInterval;
+            lfoVisBuf.write (lfoVal);
+        }
+    }
+}
+
 void Synth1_0AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                             juce::MidiBuffer& midiMessages)
 {
@@ -324,21 +363,9 @@ void Synth1_0AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     const int N = buffer.getNumSamples();
 
-    // ── LFO (per-block, sine wave) ────────────────────────────────────────────
-    const float lfoRate = lfoRateParam->load();
-    lfoPhase += (lfoRate / static_cast<float> (currentSR)) * static_cast<float> (N);
-    if (lfoPhase >= 1.0f) lfoPhase -= 1.0f;
-    const float lfoVal = std::sin (lfoPhase * juce::MathConstants<float>::twoPi);
-
-    lfoVisBuf.write (lfoVal);
-
-    const float cutoffMod = lfoVal * lfoCutoffDepthParam->load() * 4000.0f;
-    const float pitchMod  = lfoVal * lfoPitchDepthParam->load();
-
-    // Push LFO mod to voices (audio thread — no synchronisation needed)
-    for (int i = 0; i < synth.getNumVoices(); ++i)
-        if (auto* v = dynamic_cast<SynthVoice*> (synth.getVoice (i)))
-            v->setLFOMod (cutoffMod, pitchMod);
+    // The LFO used to live here, advancing once per processBlock. See
+    // renderVoices(): it now runs on a fixed control chunk so its rate no
+    // longer depends on the host's buffer size.
 
     // ── Sequencer MIDI injection / DAW-trigger ────────────────────────────────
     {
@@ -534,13 +561,13 @@ void Synth1_0AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 if (passThru)
                     processedMidi.addEvent (msg, meta.samplePosition);
             }
-            synth.renderNextBlock (buffer, processedMidi, 0, N);
+            renderVoices (buffer, processedMidi, N);
         }
         else
         {
             monoNoteStack.clear();
             currentMonoNote = -1;
-            synth.renderNextBlock (buffer, midiMessages, 0, N);
+            renderVoices (buffer, midiMessages, N);
         }
     }
     buffer.applyGain (masterGainParam->load());

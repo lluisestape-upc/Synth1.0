@@ -9,13 +9,14 @@ A polyphonic **wavetable synthesizer** VST3/Standalone plugin built with [JUCE 8
 ## Features
 
 ### Oscillator
-- Four band-limited wavetables: **Sine / Saw / Square / Triangle** (64 harmonics each)
+- Four **mip-mapped** band-limited wavetables: **Sine / Saw / Square / Triangle**, 21 half-octave bands each, rebuilt per sample rate. Every band holds only the harmonics that fit under Nyquist at the *top* of its band, so the oscillator is alias-free across the MIDI range: measured at **96 dB** better alias rejection at A4 and **139 dB** at C8 than the fixed 64-harmonic version it replaced (and 4 dB worse below 86 Hz, a characterised regression -- see `analysis/`)
+- 4-point cubic Hermite interpolation, continuous crossfade between bands, double-precision phase
 - **Wavetable morphing** -- WT Position slider linearly cross-fades between adjacent tables
-- **Oscillator Warp** -- four phase-distortion modes applied before table lookup:
+- **Oscillator Warp** -- four modes applied at table lookup:
   - `None` -- bypass
-  - `Sync` -- hard-sync simulation (phase x ratio, folded)
-  - `Bend` -- non-linear phase redistribution (tilt point controlled by Amount)
-  - `PWM` -- pulse-width modulation via phase folding
+  - `Sync` -- hard-sync simulation (phase x ratio, folded); phase distortion, aliases
+  - `Bend` -- non-linear phase redistribution (tilt point controlled by Amount); phase distortion, aliases. Note Amount = 0.5 is the identity
+  - `PWM` -- true pulse-width modulation, `x(p) - x(p + w)`: two table reads a duty cycle apart, which is band-limited and does not alias
 - Real-time waveform visualizer reflects the current morphed + warped shape
 
 ### Voice Architecture
@@ -28,12 +29,12 @@ A polyphonic **wavetable synthesizer** VST3/Standalone plugin built with [JUCE 8
 - Per-voice signal chain: Unison Oscs (warped) > constant-power pan > tanh drive > SVT Filter > ADSR x velocity
 
 ### Unison (MOD tab)
-- Up to **8 oscillators per voice** with constant-power normalization (`1/sqrt(N)`)
+- Up to **8 oscillators per voice** with constant-power normalization (`1/sqrt(N)`) and randomised start phases, so the normalisation's incoherence assumption actually holds
 - **Detune** -- spreads voices symmetrically in semitones
 - **Spread** -- pans voices across the stereo field (constant-power law)
 
 ### LFO Engine (MOD tab)
-- Sine LFO with **Rate** (0.1-20 Hz)
+- Sine LFO with **Rate** (0.1-20 Hz), advanced on a fixed 32-sample control chunk rather than once per host buffer, so the rate does not change when the DAW's buffer size does
 - Routes to **Filter Cutoff** (+/-4000 Hz) and **Pitch** (+/-48 semitones) with independent depth knobs
 - **Mod-depth ring** -- the Cutoff knob draws a live amber arc showing the LFO sweep range
 - Real-time LFO scope from a lock-free circular buffer
