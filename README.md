@@ -188,7 +188,8 @@ MIDI (mono/legato pre-process + sequencer injection) >
 
 ## License
 
-MIT -- see [LICENSE](LICENSE) for details.
+GPL v3 -- see [LICENSE](LICENSE). This plugin links the JUCE modules, which are
+licensed under AGPLv3, and the VST3 SDK under its GPLv3 option.
 
 ---
 
